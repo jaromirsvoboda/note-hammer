@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+                              "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd" >
+<html xmlns="http://www.w3.org/TR/1999/REC-html-in-xml" xml:lang="en"
+	lang="en">
+	<head>
+                <meta http-equiv="Content-Type" content="application/xhtml+xml; charset=UTF-8" />
+                <!-- HTML5 -->
+                <meta charset="UTF-8"/>
+		<style type="text/css">
+                    .bodyContainer {
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+    padding-left: 32px;
+    padding-right: 32px;
+}
+
+.notebookFor {
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    color: rgb(119, 119, 119);
+    margin: 24px 0px 0px;
+    padding: 0px;
+}
+
+.bookTitle {
+    font-size: 32px;
+    font-weight: 700;
+    text-align: center;
+    color: #333333;
+    margin-top: 22px;
+    padding: 0px;
+}
+
+.authors {
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    color: rgb(119, 119, 119);
+    margin-top: 22px;
+    margin-bottom: 24px; 
+    padding: 0px;
+}
+
+.citation {
+    font-size: 16px;
+    font-weight: 500;
+    text-align: center;
+    color: #333333;
+    margin-top: 22px;
+    margin-bottom: 24px;
+    padding: 0px;
+}
+
+.sectionHeading {
+    font-size: 24px;
+    font-weight: 700;
+    text-align: left;
+    color: #333333;
+    margin-top: 24px;
+    padding: 0px;
+}
+
+.noteHeading {
+    font-size: 18px;
+    font-weight: 700;
+    text-align: left;
+    color: #333333;
+    margin-top: 20px;
+    padding: 0px;
+}
+
+.noteText {
+    font-size: 18px;
+    font-weight: 500;
+    text-align: left;
+    color: #333333;
+    margin: 2px 0px 0px;
+    padding: 0px;
+}
+
+.highlight_blue {
+    color: rgb(178, 205, 251);
+}
+
+.highlight_orange {
+    color: #ffd7ae;
+}
+
+.highlight_pink {
+    color: rgb(255, 191, 206);
+}
+
+.highlight_yellow {
+    color: rgb(247, 206, 0);
+}
+
+.notebookGraphic {
+    margin-top: 10px;
+    text-align: left;
+}
+
+.notebookGraphic img {
+    -o-box-shadow:      0px 0px 5px #888;
+    -icab-box-shadow:   0px 0px 5px #888;
+    -khtml-box-shadow:  0px 0px 5px #888;
+    -moz-box-shadow:    0px 0px 5px #888;
+    -webkit-box-shadow: 0px 0px 5px #888;
+    box-shadow:         0px 0px 5px #888; 
+    max-width: 100%;
+    height: auto;
+}
+
+hr {
+    border: 0px none;
+    height: 1px;
+    background: none repeat scroll 0% 0% rgb(221, 221, 221);
+}
+
+		</style>
+		<script type="text/javascript">
+		    
+		</script>
+		<title></title>
+	</head>
+    <body>
+        <div class="bodyContainer">
+            <div class="notebookFor">
+Notebook for
+</div>
+<div class="bookTitle">
+copilot-explorer [Programming, MachineLearning, GPT]
+</div>
+<div class="authors">
+thakkarparth007.github.io
+</div>
+<div class="citation">
+Citation (APA): thakkarparth007.github.io. (2023). <i>copilot-explorer [Programming, MachineLearning, GPT]</i> [Kindle Android version]. Retrieved from Amazon.com
+</div>
+<hr />
+
+            <div class="sectionHeading">
+copilot-explorer [Programming, MachineLearning, GPT]
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 22
+</div>
+<div class="noteText">
+There are two main components of Github Copilot: Client: The VSCode extension collects whatever you type (called prompt), and sends it to a Codex –like model. Whatever the model returns, it then displays in your editor. Model: The Codex-like model takes the prompt and returns suggestions that complete the prompt. Secret Sauce 1: Prompt engineering
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 31
+</div>
+<div class="noteText">
+The extension encodes a bunch of information about your project in the prompt.
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 64
+</div>
+<div class="noteText">
+prompt includes both a prefix and a suffix. Copilot will then send this prompt (after some formatting) to the model. In this case, Copilot is invoking Codex in “insert mode” aka fill-in-middle (FIM) mode, because suffix is non-empty.
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 130
+</div>
+<div class="noteText">
+Secret Sauce 2: Model Invocation
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 132
+</div>
+<div class="noteText">
+Inline/ GhostText Main module Here, the extension asks for very few suggestions (1– 3) from the model in order to be fast. It also aggressively caches results from the model. Furthermore, it takes care of adapting the suggestions if the user continues typing. It also takes care of debouncing the model requests if the user is typing fast. This UI also has some logic to prevent sending requests in some cases. For example , if the user is in the middle of a line , then the request is only sent if the characters to the right of the cursor are whitespace, closing braces etc.
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 140
+</div>
+<div class="noteText">
+More interestingly, after generating the prompt, this module checks if the prompt is “good enough” to bother with invoking the model. It does this by computing what is called “contextual filter score” . This score seems to be based on a simple logistic regression model over 11 features such as the language, whether previous suggestion was accepted/ rejected, duration between previous accept/ reject, length of last line in the prompt, last character before cursor, etc.
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 153
+</div>
+<div class="noteText">
+Copilot Panel Main module , Core logic 1 , Core logic 2 . This UI requests more samples (10 by default) from the model than the inline UI. This UI doesn’t appear to have contextual filter logic (makes sense, if the user explicitly invoked this, you don’t want to not prompt the model).
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 165
+</div>
+<div class="noteText">
+Before a suggestion is shown (via either UI), Copilot performs two checks: If the output is repeatitive (e.g., foo = foo = foo = foo...), which is a common failure mode of language models, then the suggestion is discarded . This can also happen at the Copilot proxy server or client or both. If the user has already typed the suggestion, then it is discarded. Secret Sauce 3: Telemetry
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 177
+</div>
+<div class="noteText">
+open-source FauxPilot
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 180
+</div>
+<div class="noteText">
+Measuring Copilot’s success rate isn’t just a matter of trivially computing the number of accepts/ number of rejects. That’s because people typically accept and then make some modifications. As a result, Github folks check if the suggestion that was accepted is still present in the code. This gets done at different time lengths after the insertion. Specifically, after 15s, 30s , 2min , 5min and 10min timeouts , the extension measures if the accepted suggestion is “still in code”.
+</div>
+<div class="noteHeading">
+Highlight (<span class="highlight_yellow">yellow</span>) -  Location 186
+</div>
+<div class="noteText">
+they measure edit distance ( at character level and word level) between the suggested text, and a window around the insertion point. Then, if the ‘word’ level edit distance between inserted and the window is less than 50% (normalized to suggestion size), then the suggestion is considered “still in code”
+</div>
+
+        </div>
+    </body>
+</html>
