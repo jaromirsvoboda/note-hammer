@@ -1,30 +1,30 @@
 import unittest
 import sys
 
-from scribe.scribe import Scribe
+from note_hammer.note_hammer import NoteHammer
 # sys.path.append(r"C:\Projects\WeldChecker\weld_checker")
 
 
-class ScribeTest(unittest.TestCase):
+class note_hammerTest(unittest.TestCase):
     ...
     # def test_extract_tags(self):
-    #     scribe = Scribe()
-    #     self.assertListEqual(scribe.extract_tags("hello [world]"), ["world"])
-    #     self.assertListEqual(scribe.extract_tags("hello [world1,world2]"), ["world1", "world2"])
-    #     self.assertListEqual(scribe.extract_tags("hello [world1, world2]"), ["world1", "world2"])
-    #     self.assertListEqual(scribe.extract_tags("hello [world1,,world2]"), ["world1", "world2"])
-    #     self.assertListEqual(scribe.extract_tags("hello [world1, ,world2]"), ["world1", "world2"])
-    #     self.assertListEqual(scribe.extract_tags("hello [world1, , world2]"), ["world1", "world2"])
-    #     self.assertListEqual(scribe.extract_tags("hello [world1 , ,world2]"), ["world1", "world2"])
-    #     self.assertListEqual(scribe.extract_tags("hello [,world1 , ,world2]"), ["world1", "world2"])
-    #     self.assertListEqual(scribe.extract_tags("hello [,world1 , ,world2] "), ["world1", "world2"])
-    #     self.assertListEqual(scribe.extract_tags("[,world1 , ,world2] hello "), [])
-    #     self.assertListEqual(scribe.extract_tags("[,world1 , ,world2] hello ["), [])
-    #     self.assertListEqual(scribe.extract_tags("[,world1 , ,world2] hello ]"), [])
-    #     self.assertListEqual(scribe.extract_tags("[,world1 , ,world2] hello []"), [])
-    #     self.assertListEqual(scribe.extract_tags("[,world1 , ,world2] hello [this should be matched]"), ["this should be matched"])
-    #     self.assertListEqual(scribe.extract_tags("hello [a,b,c,d    ,e,f,    g,h,i]  "), ["a", "b", "c", "d", "e", "f", "g", "h", "i"])
-    #     self.assertListEqual(scribe.extract_tags("  hello [a,b,c,d    ,e,f,    g,h,i]   \n"), ["a", "b", "c", "d", "e", "f", "g", "h", "i"])
+    #     note_hammer = note_hammer()
+    #     self.assertListEqual(note_hammer.extract_tags("hello [world]"), ["world"])
+    #     self.assertListEqual(note_hammer.extract_tags("hello [world1,world2]"), ["world1", "world2"])
+    #     self.assertListEqual(note_hammer.extract_tags("hello [world1, world2]"), ["world1", "world2"])
+    #     self.assertListEqual(note_hammer.extract_tags("hello [world1,,world2]"), ["world1", "world2"])
+    #     self.assertListEqual(note_hammer.extract_tags("hello [world1, ,world2]"), ["world1", "world2"])
+    #     self.assertListEqual(note_hammer.extract_tags("hello [world1, , world2]"), ["world1", "world2"])
+    #     self.assertListEqual(note_hammer.extract_tags("hello [world1 , ,world2]"), ["world1", "world2"])
+    #     self.assertListEqual(note_hammer.extract_tags("hello [,world1 , ,world2]"), ["world1", "world2"])
+    #     self.assertListEqual(note_hammer.extract_tags("hello [,world1 , ,world2] "), ["world1", "world2"])
+    #     self.assertListEqual(note_hammer.extract_tags("[,world1 , ,world2] hello "), [])
+    #     self.assertListEqual(note_hammer.extract_tags("[,world1 , ,world2] hello ["), [])
+    #     self.assertListEqual(note_hammer.extract_tags("[,world1 , ,world2] hello ]"), [])
+    #     self.assertListEqual(note_hammer.extract_tags("[,world1 , ,world2] hello []"), [])
+    #     self.assertListEqual(note_hammer.extract_tags("[,world1 , ,world2] hello [this should be matched]"), ["this should be matched"])
+    #     self.assertListEqual(note_hammer.extract_tags("hello [a,b,c,d    ,e,f,    g,h,i]  "), ["a", "b", "c", "d", "e", "f", "g", "h", "i"])
+    #     self.assertListEqual(note_hammer.extract_tags("  hello [a,b,c,d    ,e,f,    g,h,i]   \n"), ["a", "b", "c", "d", "e", "f", "g", "h", "i"])
         
         
         

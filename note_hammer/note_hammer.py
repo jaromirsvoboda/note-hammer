@@ -8,10 +8,10 @@ from timeit import default_timer
 
 from bs4 import BeautifulSoup
 
-from scribe.note import Note
+from note_hammer.note import Note
 
 
-class Scribe():
+class NoteHammer():
     def run(self, input_path: str, output_path: str):
         start = default_timer()
         notes = self.extract_notes(input_path)
@@ -19,7 +19,7 @@ class Scribe():
 
         end = default_timer()
 
-        logging.info(f"Scribe: Finished in {round(end - start, 2)} seconds.")
+        logging.info(f"NoteHammer: Finished in {round(end - start, 2)} seconds.")
 
     def extract_notes(self, input_path: str) -> list[Note]:
         """
@@ -55,7 +55,7 @@ class Scribe():
             file.write(note_as_md)
 
         # # Read the HTML file
-        # with open(r'C:\Projects\scribe\test_resources\exported notes\[Prediction] What war between the USA and China wo - Notebook.html', 'r') as f:
+        # with open(r'C:\Projects\note_hammer\test_resources\exported notes\[Prediction] What war between the USA and China wo - Notebook.html', 'r') as f:
         #     html = f.read()
 
         # # Convert the HTML to Markdown

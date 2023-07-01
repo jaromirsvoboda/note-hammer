@@ -8,15 +8,15 @@
             "name": "Python: Module",
             "type": "python",
             "request": "launch",
-            "module": "src.scribe",
+            "module": "note_hammer",
             "justMyCode": true,
             "args": [
                 // "--count", "5",
                 // "--path", "c:\\OneDrive\\exported notes"
-                // "--input_path", "C:/Projects/scribe/test_resources/exported notes/Collections_ Is the United States Exceptional_ [Ac - Notebook.html",
-                "--input_path", "C:/Projects/scribe/test_resources/exported notes",
-                "--output_path", "C:/Projects/scribe/test_resources/outputs"
-                // "--path", "C:/Projects/scribe/test_resources/exported notes/The March of Folly - Notebook.html"
+                // "--input_path", "C:/Projects/NoteHammer/test_resources/exported notes/Collections_ Is the United States Exceptional_ [Ac - Notebook.html",
+                "--input_path", "C:/Projects/NoteHammer/test_resources/exported notes",
+                "--output_path", "C:/Projects/NoteHammer/test_resources/outputs"
+                // "--path", "C:/Projects/NoteHammer/test_resources/exported notes/The March of Folly - Notebook.html"
             ],
             "console": "integratedTerminal"
         }

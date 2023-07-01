@@ -1,6 +1,6 @@
 import pytest
 
-from scribe.skeleton import fib, main
+from note_hammer.skeleton import fib, main
 
 __author__ = "jaromirsvoboda"
 __copyright__ = "jaromirsvoboda"

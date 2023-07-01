@@ -1,7 +1,7 @@
 import unittest
 import sys
 
-from scribe.scribe import Note
+from note_hammer.note_hammer import Note
 # sys.path.append(r"C:\Projects\WeldChecker\weld_checker")
 
 

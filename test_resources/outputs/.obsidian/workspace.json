@@ -11,8 +11,12 @@
             "id": "1aeede09121fd2b9",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {}
+              "type": "markdown",
+              "state": {
+                "file": "Fireside Friday, August 5, 2022.md",
+                "mode": "source",
+                "source": false
+              }
             }
           }
         ]
@@ -60,6 +64,14 @@
               "type": "starred",
               "state": {}
             }
+          },
+          {
+            "id": "a09748278fae1562",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {}
+            }
           }
         ]
       }
@@ -81,6 +93,7 @@
             "state": {
               "type": "backlink",
               "state": {
+                "file": "Fireside Friday, August 5, 2022.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -97,6 +110,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
+                "file": "Fireside Friday, August 5, 2022.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               }
@@ -118,7 +132,9 @@
             "type": "leaf",
             "state": {
               "type": "outline",
-              "state": {}
+              "state": {
+                "file": "Fireside Friday, August 5, 2022.md"
+              }
             }
           }
         ]
@@ -140,6 +156,12 @@
   },
   "active": "1aeede09121fd2b9",
   "lastOpenFiles": [
+    "Fireside Friday, April 22, 2022.md",
+    "IM2 Moloch Hasn’t Won.md",
+    "Fireside Friday, August 5, 2022.md",
+    "copilot-explorer.md",
+    "A voting theory primer for rationalists.md",
+    "250bpm.md",
     "Prediction - What war between the USA and China would look like in 2050.md",
     "Collections Is the United States Exceptional.md",
     "…And I Show You How Deep The Rabbit Hole Goes.md",
