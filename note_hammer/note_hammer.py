@@ -1,9 +1,11 @@
 # import html2markdown
 # from markdownify import markdownify as md
+import datetime
 import logging
 import math
 import os
 import re
+import shutil
 from timeit import default_timer
 
 from bs4 import BeautifulSoup
@@ -12,14 +14,24 @@ from note_hammer.note import Note
 
 
 class NoteHammer():
-    def run(self, input_path: str, output_path: str):
+    def extract_kindle_notes(self, input_path: str, output_path: str):
         start = default_timer()
+        logging.info(f"NoteHammer: Started extracting markdown notes from Kindle html files in {input_path}, md files will be saved to {output_path}.")
+        
         notes = self.extract_notes(input_path)
         self.write_notes(notes, output_path)
 
         end = default_timer()
 
         logging.info(f"NoteHammer: Finished in {round(end - start, 2)} seconds.")
+        
+    def backup_notes(self, input_path: str, backup_path: str):
+        backup_folder = os.path.join(backup_path, f"backup_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
+
+        if not os.path.exists(backup_folder):
+            os.makedirs(backup_folder)
+
+        shutil.copytree(input_path, backup_folder)
 
     def extract_notes(self, input_path: str) -> list[Note]:
         """
@@ -45,6 +57,9 @@ class NoteHammer():
         return notes
 
     def write_notes(self, notes: list[Note], output_path: str):
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        
         assert os.path.isdir(output_path)
         for note in notes:
             self.write_note(note, output_path)

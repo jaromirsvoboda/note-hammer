@@ -14,6 +14,8 @@
                 // "--count", "5",
                 // "--path", "c:\\OneDrive\\exported notes"
                 // "--input_path", "C:/Projects/NoteHammer/test_resources/exported notes/Collections_ Is the United States Exceptional_ [Ac - Notebook.html",
+                "extract_kindle",
+                "-sc",
                 "--input_path", "C:/Projects/NoteHammer/test_resources/exported notes",
                 "--output_path", "C:/Projects/NoteHammer/test_resources/outputs"
                 // "--path", "C:/Projects/NoteHammer/test_resources/exported notes/The March of Folly - Notebook.html"

@@ -19,13 +19,26 @@ logging.basicConfig(
 logging.getLogger().addHandler(logging.StreamHandler())
 logging.info(f"Starting NoteHammer at {timestamp}.")
 
-@click.command()
-@click.option('--input_path', default=".", help='Path to the folder containing kindle notes (in .html format, can be nested in sub-folders) or to a single .html file.')
-@click.option('--output_path', default=".", help='Path to the folder where the notes will be saved (in .md format).')
-def main(input_path: str, output_path: str):
-    print(path)
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+@click.option('-i', '--input_path', default=".", help='Path to the folder containing kindle notes (in .html format, can be nested in sub-folders) or to a single .html file.')
+@click.option('-o', '--output_path', default=r".\export", help='Path to the folder where the extracted notes will be saved (in .md format).')
+@click.option('-b', '--backup_path', default=r".\backup", help='Path to the folder where the Kindle htmls will be backed up to before extraction process. Empty string disables backup.')
+@click.option('-sc', '--skip_confirmation', is_flag=True, help='Confirm before processing the notes.')
+def extract_kindle(input_path: str, output_path: str, backup_path: str, skip_confirmation: bool):
+    if not skip_confirmation:
+        click.confirm('Are you sure you want to process the notes?', abort=True)
+    
     note_hammer = NoteHammer()
-    note_hammer.run(input_path=input_path, output_path=output_path)
+    
+    if (backup_path != ""):
+        note_hammer.backup_notes(input_path=input_path, backup_path=backup_path)
+    
+    note_hammer.extract_kindle_notes(input_path=input_path, output_path=output_path)
 
 if __name__ == '__main__':
     main()  # type: ignore
