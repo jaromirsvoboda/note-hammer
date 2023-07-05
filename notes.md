@@ -1,5 +1,6 @@
-https://opensource.com/article/22/7/bootstrap-python-command-line-application
+#### TODO
 
-### TODO
-
-- [] Capitalize the first letter of tag 
+- [] Better extracting tag from authors (remove spaces, camel case, etc)
+- [] Move attachments to separate folder
+- [] Clean database
+- [] Overwrite older notes option

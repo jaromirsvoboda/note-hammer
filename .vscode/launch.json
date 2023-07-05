@@ -1,24 +1,31 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Module",
+            "name": "Extract my notes",
             "type": "python",
             "request": "launch",
             "module": "note_hammer",
             "justMyCode": true,
             "args": [
-                // "--count", "5",
-                // "--path", "c:\\OneDrive\\exported notes"
-                // "--input_path", "C:/Projects/NoteHammer/test_resources/exported notes/Collections_ Is the United States Exceptional_ [Ac - Notebook.html",
+                "extract_kindle",
+                "-sc",
+                "--input_path", "C:/OneDrive/exported notes",
+                "--output_path", "C:/OneDrive/Notes/NoteHammer",
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Extract from test data",
+            "type": "python",
+            "request": "launch",
+            "module": "note_hammer",
+            "justMyCode": true,
+            "args": [
                 "extract_kindle",
                 "-sc",
                 "--input_path", "C:/Projects/NoteHammer/test_resources/exported notes",
                 "--output_path", "C:/Projects/NoteHammer/test_resources/outputs"
-                // "--path", "C:/Projects/NoteHammer/test_resources/exported notes/The March of Folly - Notebook.html"
             ],
             "console": "integratedTerminal"
         }

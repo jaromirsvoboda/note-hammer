@@ -23,7 +23,7 @@ class NoteHammer():
 
         end = default_timer()
 
-        logging.info(f"NoteHammer: Finished in {round(end - start, 2)} seconds.")
+        logging.info(f"NoteHammer: Extracted {len(notes)} notes in {round(end - start, 2)} seconds.")
         
     def backup_notes(self, input_path: str, backup_path: str):
         backup_folder = os.path.join(backup_path, f"backup_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
@@ -41,6 +41,8 @@ class NoteHammer():
         Returns:
             list[Note]: _description_
         """
+        logging.info(f"NoteHammer: Extracting notes from html (this might take a while)...")
+        
         assert os.path.isdir(input_path) or os.path.splitext(input_path)[1] == ".html"
         walk = list(os.walk(input_path))
         notes: list[Note] = []
@@ -57,6 +59,8 @@ class NoteHammer():
         return notes
 
     def write_notes(self, notes: list[Note], output_path: str):
+        logging.info(f"NoteHammer: Writing notes to markdown...")
+        
         if not os.path.exists(output_path):
             os.makedirs(output_path)
         

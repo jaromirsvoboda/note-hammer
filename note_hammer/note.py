@@ -57,7 +57,7 @@ class Note():
         if match:
             extracted_text = match.group(1)
             parts = extracted_text.split(',')
-            stripped_parts = [part.strip() for part in parts if part.strip() != '']
+            stripped_parts = [part.strip().capitalize() for part in parts if part.strip() != '']
             tags.extend(stripped_parts)
         
         return tags
@@ -73,12 +73,13 @@ class Note():
     
     def to_markdown(self) -> str:
         text = ""
-        # text += f"# {self.title}\n"
-        # text += "\n"
         text += f"#### {self.authors}\n"
         text += "\n"
-        text += f"#### {self.citation}\n"
+        text += f"{self.citation}\n"
         text += "\n"
+    
+        if self.authors.split(".")[0].capitalize() not in self.tags:
+            text += f"#{self.authors}\n"
         for tag in self.tags:
             text += f"#{tag}\n"
         
@@ -87,6 +88,7 @@ class Note():
         
         for section, notes in self.sections_to_notes.items():
             text += f"### {section}\n"
+            text += "\n"
             for note in notes:
                 text += f"- {note}\n"
                 
