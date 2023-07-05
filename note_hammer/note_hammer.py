@@ -26,10 +26,10 @@ class NoteHammer():
         logging.info(f"NoteHammer: Finished in {round(end - start, 2)} seconds.")
         
     def backup_notes(self, input_path: str, backup_path: str):
-        backup_folder = os.path.join(backup_path, f"backup_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
+        backup_folder = os.path.join(backup_path, f"backup_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
 
-        if not os.path.exists(backup_folder):
-            os.makedirs(backup_folder)
+        # if not os.path.exists(backup_folder):
+        #     os.makedirs(backup_folder)
 
         shutil.copytree(input_path, backup_folder)
 
