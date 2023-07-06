@@ -42,25 +42,37 @@ class Note():
                 title=cls.remove_leading_and_trailing_newlines(title.text) if title else "",
                 authors=cls.remove_leading_and_trailing_newlines(authors.text) if authors else "",
                 citation=cls.remove_leading_and_trailing_newlines(citation.text) if citation else "",
-                tags=cls.extract_tags(title.text if title else ""),
+                tags=cls.extract_tags(
+                    authors=authors.text if authors else "",
+                    title=title.text if title else ""
+                ),
                 sections_to_notes=sections_to_notes
             )
             
     @staticmethod
-    def extract_tags(string: str) -> list[str]:
-        pattern = r'\w+ \[(.*)\]\s*$'
-
-        match = re.search(pattern, string)
-
-        tags = ["KindleExport"]
-
+    def extract_tags(authors:str, title: str, default_tags: list[str] = ["NoteHammer"]) -> list[str]:
+        tags = set(default_tags) # set to avoid duplicates
+        
+        # region tags from title
+        pattern = r"\w+ \[(.*)\]\s*$"
+        match = re.search(pattern, title)
         if match:
             extracted_text = match.group(1)
-            parts = extracted_text.split(',')
-            stripped_parts = [part.strip().capitalize() for part in parts if part.strip() != '']
-            tags.extend(stripped_parts)
+            parts = extracted_text.split(",")
+            stripped_parts = [part.strip().capitalize() for part in parts if part.strip() != ""]
+            
+            tags.update(stripped_parts)
+        # endregion
         
-        return tags
+        # region tags from authors
+        author_parts = authors.split(".")
+        author_parts = [part.capitalize() for part in author_parts if part.strip() != ""]
+        author_tag = "".join(author_parts)
+        tags.add(author_tag)
+        # endregion
+        
+        return list(tags)
+
 
     @staticmethod
     @cache
