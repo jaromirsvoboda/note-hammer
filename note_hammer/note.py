@@ -65,7 +65,8 @@ class Note():
         # endregion
         
         # region tags from authors
-        author_parts = authors.split(".")
+        authors = authors.replace("\n", "").strip()
+        author_parts =re.split("[.,! ]", authors)
         author_parts = [part.capitalize() for part in author_parts if part.strip() != ""]
         author_tag = "".join(author_parts)
         tags.add(author_tag)
@@ -90,8 +91,6 @@ class Note():
         text += f"{self.citation}\n"
         text += "\n"
     
-        if self.authors.split(".")[0].capitalize() not in self.tags:
-            text += f"#{self.authors}\n"
         for tag in self.tags:
             text += f"#{tag}\n"
         
