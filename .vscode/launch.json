@@ -12,6 +12,7 @@
                 "-sc",
                 "--input_path", "C:/OneDrive/exported notes",
                 "--output_path", "C:/OneDrive/Notes/NoteHammer",
+                "--tags", "asdfasdf qwerQWER",
             ],
             "console": "integratedTerminal"
         },
