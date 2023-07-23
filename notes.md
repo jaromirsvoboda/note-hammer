@@ -5,3 +5,4 @@
 - [ ] Clean database
 - [ ] Overwrite older notes option
 - [ ] Default tags option
+- [ ] More detailed README (how to export the notes from kindle, using tags, etc.)
