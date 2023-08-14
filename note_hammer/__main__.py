@@ -29,9 +29,9 @@ def cli():
 @click.option('-i', '--input_path', default=".", help='Path to the folder containing kindle notes (in .html format, can be nested in sub-folders) or to a single .html file.')
 @click.option('-o', '--output_path', default=r".\export", help='Path to the folder where the extracted notes will be saved (in .md format).')
 @click.option('-b', '--backup_path', default=r".\backup", help='Path to the folder where the Kindle htmls will be backed up to before extraction process. Empty string disables backup.')
-@click.argument('--tags', nargs=-1)
+# @click.option('-t', '--tags', default="")
 @click.option('-sc', '--skip_confirmation', is_flag=True, help='Confirm before processing the notes.')
-def extract_kindle(input_path: str, output_path: str, backup_path: str, tags: list[str], skip_confirmation: bool):
+def extract_kindle(input_path: str, output_path: str, backup_path: str, skip_confirmation: bool):
     if not skip_confirmation:
         click.confirm(f'Are you sure you want to process the notes in {input_path}?', abort=True)
     
