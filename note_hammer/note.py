@@ -6,16 +6,25 @@ import time
 
 from bs4 import BeautifulSoup
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Note():
     title: str
     authors: str
     citation: str
-    tags: list[str]
-    sections_to_notes: dict[str, list[str]]
+    tags: frozenset[str]
+    sections_to_notes: frozenset[tuple[str, frozenset[str]]]
     
     # def __str__(self):
     #     return f"Title: {self.title}
+    
+    def __eq__(self, other):
+        if not isinstance(other, Note):
+            return NotImplemented
+        return self.title == other.title and \
+               self.authors == other.authors and \
+               self.citation == other.citation and \
+               self.tags == other.tags and \
+               self.sections_to_notes == other.sections_to_notes
     
     @classmethod
     def from_kindle_html(cls, html_path: str):
@@ -97,7 +106,7 @@ class Note():
         text += f"\n\n- Created: {time.strftime('%Y-%m-%d_%H-%M-%S')}\n"
         text += "\n---\n\n"
         
-        for section, notes in self.sections_to_notes.items():
+        for section, notes in self.sections_to_notes:
             text += f"### {section}\n"
             text += "\n"
             for note in notes:
