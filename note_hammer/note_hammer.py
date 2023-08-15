@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 from timeit import default_timer
+import click
 
 from bs4 import BeautifulSoup
 
@@ -41,7 +42,7 @@ class NoteHammer():
         Returns:
             list[Note]: _description_
         """
-        logging.info(f"NoteHammer: Extracting notes from html (this might take a while)...")
+        logging.info(f"NoteHammer: Started reading html files from {input_path}.")
         
         assert os.path.isdir(input_path) or os.path.splitext(input_path)[1] == ".html"
         walk = list(os.walk(input_path))
@@ -50,12 +51,18 @@ class NoteHammer():
         if not walk and input_path.endswith(".html"):
             notes.append(Note.from_kindle_html(input_path))
         else:
+            all_html_file_paths = []
             for root, dirs, files in walk:
-                html_files = [file for file in files if file.endswith(".html")]
-                notes.extend(
-                    Note.from_kindle_html(os.path.join(root, html_file))
-                    for html_file in html_files
-                )
+                all_html_file_paths.extend([os.path.join(root, file) for file in files if file.endswith(".html")])
+            with click.progressbar(all_html_file_paths, label="NoteHammer: Reading html files") as bar:
+                for html_file_path in bar:
+                    notes.append(Note.from_kindle_html(html_file_path))
+            # for root, dirs, files in walk:
+            #     html_files = [file for file in files if file.endswith(".html")]
+            #     notes.extend(
+            #         Note.from_kindle_html(os.path.join(root, html_file))
+            #         for html_file in html_files
+            #     )
         return notes
 
     def write_notes(self, notes: list[Note], output_path: str):
