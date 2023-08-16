@@ -11,13 +11,13 @@ from note_hammer.note import Note
 
 
 class NoteHammer():
-    def extract_kindle_notes(self, input_path: str, output_path: str, overwrite_older_notes: bool = False):
+    def extract_kindle_notes(self, input_path: str, output_path: str, overwrite_older_notes: bool = False, skip_confirmation: bool = False):
         start = default_timer()
         logging.info(f"NoteHammer: Started extracting markdown notes from Kindle html files in {input_path}, md files will be saved to {output_path}.")
         
         notes = self.extract_notes(input_path)
         notes = self.remove_duplicate_notes(notes)
-        self.write_notes(notes, output_path, overwrite_older_notes=overwrite_older_notes)
+        self.write_notes(notes, output_path, overwrite_older_notes=overwrite_older_notes, skip_confirmation=skip_confirmation)
 
         end = default_timer()
 
@@ -53,7 +53,7 @@ class NoteHammer():
                     notes.append(Note.from_kindle_html(html_file_path))
         return notes
 
-    def write_notes(self, notes: list[Note], output_path: str, overwrite_older_notes: bool = False):
+    def write_notes(self, notes: list[Note], output_path: str, overwrite_older_notes: bool = False, skip_confirmation: bool = False):
         logging.info(f"NoteHammer: Writing notes to markdown...")
         
         if not os.path.exists(output_path):
@@ -61,16 +61,25 @@ class NoteHammer():
         
         assert os.path.isdir(output_path)
         for note in notes:
-            self.write_note(note, output_path, overwrite_older_notes=overwrite_older_notes)
+            self.write_note(note, output_path, overwrite_older_notes=overwrite_older_notes, skip_confirmation=skip_confirmation)
 
-    def write_note(self, note: Note, output_folder: str, overwrite_older_notes: bool = False):
+    def write_note(self, note: Note, output_folder: str, overwrite_older_notes: bool = False, skip_confirmation: bool = False):
         filename = self.remove_invalid_chars_from_filename(self.remove_tags(note.title)) + ".md"
         filepath = os.path.join(output_folder, filename)
+        
         if not overwrite_older_notes and os.path.exists(filepath):
-            logging.warning(f"NoteHammer: Skipping file {filename} because it already exists in {output_folder}. Use -o or --overwrite-older-notes to overwrite such notes.")
+            logging.warning(f"NoteHammer: Skipping file {filepath} because it already exists . Use -o or --overwrite-older-notes flag to overwrite such notes.")
             return
         
-        with open(os.path.join(output_folder, self.remove_invalid_chars_from_filename(self.remove_tags(note.title)) + ".md"), "w",  encoding="utf-8") as file:
+        if not skip_confirmation:
+            confirmed = click.confirm(f'Are you sure you want to overwrite existing note {filepath}? Use -sc or --skip-confirmations flag to not get asked again.', abort=False)
+            if not confirmed:
+                logging.info(f"NoteHammer: Skipping file {filepath} because it already exists.")
+                return
+        
+        if os.path.exists(filepath):
+            logging.info(f"NoteHammer: Overwriting file {filename} in {output_folder}.")
+        with open(filepath, "w",  encoding="utf-8") as file:
             note_as_md = note.to_markdown()
             file.write(note_as_md)
     

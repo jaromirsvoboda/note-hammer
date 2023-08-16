@@ -46,6 +46,8 @@ class Note():
                 if section_heading not in sections_to_notes:
                     sections_to_notes[section_heading] = []
                 sections_to_notes[section_heading].append(cls.remove_leading_and_trailing_newlines(note_text.text))
+            
+            frozen_section_to_notes = frozenset([(section, frozenset(notes)) for section, notes in sections_to_notes.items()])  
 
             return cls(
                 title=cls.remove_leading_and_trailing_newlines(title.text) if title else "",
@@ -55,7 +57,7 @@ class Note():
                     authors=authors.text if authors else "",
                     title=title.text if title else ""
                 ),
-                sections_to_notes=sections_to_notes
+                sections_to_notes=frozen_section_to_notes
             )
             
     @staticmethod
@@ -81,7 +83,7 @@ class Note():
         tags.add(author_tag)
         # endregion
         
-        return list(tags)
+        return frozenset(tags)
 
 
     @staticmethod
