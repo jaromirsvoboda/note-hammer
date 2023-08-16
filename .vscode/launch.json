@@ -10,8 +10,8 @@
             "args": [
                 "extract_kindle",
                 "--skip-confirmation",
-                "--input_path", "C:/OneDrive/exported notes",
-                "--output_path", "C:/OneDrive/Notes/NoteHammer",
+                "--input_path", "C:\\OneDrive\\exported notes",
+                "--output_path", "C:\\OneDrive\\Notes\\NoteHammer",
                 "--overwrite-older-notes"
                 // "--tags", "asdfasdf qwerQWER",
             ],
@@ -26,8 +26,8 @@
             "args": [
                 "extract_kindle",
                 "-sc",
-                "--input_path", "C:/Projects/NoteHammer/test_resources/exported notes",
-                "--output_path", "C:/Projects/NoteHammer/test_resources/outputs"
+                "--input_path", "C:\\Projects\\NoteHammer\\test_resources\\exported notes",
+                "--output_path", "C:\\Projects\\NoteHammer\\test_resources\\outputs"
             ],
             "console": "integratedTerminal"
         }

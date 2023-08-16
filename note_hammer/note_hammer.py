@@ -21,7 +21,7 @@ class NoteHammer():
 
         end = default_timer()
 
-        logging.info(f"NoteHammer: Extracted {len(notes)} notes in {round(end - start, 2)} seconds.")
+        logging.info(f"NoteHammer: Processed {len(notes)} notes in {round(end - start, 2)} seconds.")
         
     def backup_notes(self, input_path: str, backup_path: str):
         backup_folder = os.path.join(backup_path, f"backup_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
@@ -54,7 +54,7 @@ class NoteHammer():
         return notes
 
     def write_notes(self, notes: list[Note], output_path: str, overwrite_older_notes: bool = False, skip_confirmation: bool = False):
-        logging.info(f"NoteHammer: Writing notes to markdown...")
+        logging.info(f"NoteHammer: Writing markdown notes to {output_path}.")
         
         if not os.path.exists(output_path):
             os.makedirs(output_path)
@@ -78,7 +78,7 @@ class NoteHammer():
                 return
         
         if os.path.exists(filepath):
-            logging.info(f"NoteHammer: Overwriting file {filename} in {output_folder}.")
+            logging.info(f"NoteHammer: Overwriting {filepath}")
         with open(filepath, "w",  encoding="utf-8") as file:
             note_as_md = note.to_markdown()
             file.write(note_as_md)

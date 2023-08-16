@@ -31,7 +31,7 @@ def cli():
 @click.option('-b', '--backup_path', default=r".\backup", help='Path to the folder where the Kindle htmls will be backed up to before extraction process. Empty string disables backup.')
 @click.option('-o', '--overwrite-older-notes', is_flag=True, help='Include this flag for overwriting older notes with the same name in the output path.')
 # @click.option('-t', '--tags', default="")
-@click.option('-sc', '--skip_confirmation', is_flag=True, help='Confirm before processing the notes.')
+@click.option('-sc', '--skip-confirmation', is_flag=True, help='Confirm before processing the notes.')
 def extract_kindle(input_path: str, output_path: str, backup_path: str, overwrite_older_notes: bool, skip_confirmation: bool):
     if not skip_confirmation:
         click.confirm(f'Are you sure you want to process the notes in {input_path}?', abort=True)
