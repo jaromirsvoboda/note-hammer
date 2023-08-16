@@ -11,13 +11,40 @@ from note_hammer.note import Note
 
 
 class NoteHammer():
-    def extract_kindle_notes(self, input_path: str, output_path: str, overwrite_older_notes: bool = False, skip_confirmation: bool = False):
+    def __init__(
+        self,
+        input_path: str, 
+        output_path: str, 
+        tags: list[str] = [],
+        overwrite_older_notes: bool = False, 
+        skip_confirmation: bool = False
+    ):
+        input_path = input_path
+        output_path = output_path
+        tags: list[str] = tags
+        overwrite_older_notes: bool = overwrite_older_notes 
+        skip_confirmation: bool = skip_confirmation
+    
+    def process_kindle_notes(
+        self, 
+        input_path: str, 
+        output_path: str, 
+        tags: list[str] = [],
+        overwrite_older_notes: bool = False, 
+        skip_confirmation: bool = False
+    ):
         start = default_timer()
         logging.info(f"NoteHammer: Started extracting markdown notes from Kindle html files in {input_path}, md files will be saved to {output_path}.")
         
         notes = self.extract_notes(input_path)
         notes = self.remove_duplicate_notes(notes)
-        self.write_notes(notes, output_path, overwrite_older_notes=overwrite_older_notes, skip_confirmation=skip_confirmation)
+        self.write_notes(
+            notes=notes, 
+            output_path=output_path,
+            tags=tags, 
+            overwrite_older_notes=overwrite_older_notes,
+            skip_confirmation=skip_confirmation,
+        )
 
         end = default_timer()
 
