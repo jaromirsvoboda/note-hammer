@@ -14,48 +14,50 @@ class NoteHammer():
     def __init__(
         self,
         input_path: str, 
-        output_path: str, 
+        output_path: str,
+        backup_path: str,
         tags: list[str] = [],
         overwrite_older_notes: bool = False, 
         skip_confirmation: bool = False
     ):
-        input_path = input_path
-        output_path = output_path
-        tags: list[str] = tags
-        overwrite_older_notes: bool = overwrite_older_notes 
-        skip_confirmation: bool = skip_confirmation
+        self.input_path = input_path
+        self.output_path = output_path
+        self.backup_path = backup_path
+        self.tags: list[str] = tags
+        self.overwrite_older_notes: bool = overwrite_older_notes 
+        self.skip_confirmation: bool = skip_confirmation
     
     def process_kindle_notes(
         self, 
-        input_path: str, 
-        output_path: str, 
-        tags: list[str] = [],
-        overwrite_older_notes: bool = False, 
-        skip_confirmation: bool = False
+        # input_path: str, 
+        # output_path: str, 
+        # tags: list[str] = [],
+        # overwrite_older_notes: bool = False, 
+        # skip_confirmation: bool = False
     ):
         start = default_timer()
-        logging.info(f"NoteHammer: Started extracting markdown notes from Kindle html files in {input_path}, md files will be saved to {output_path}.")
+        if self.backup_path:
+            logging.info(f"NoteHammer: Backing up notes to {self.backup_path}.")
+            self.backup_notes()
         
-        notes = self.extract_notes(input_path)
+        logging.info(f"NoteHammer: Extracting markdown notes from Kindle html files in {self.input_path}, md files will be saved to {self.output_path}.")
+        
+        notes = self.extract_notes()
         notes = self.remove_duplicate_notes(notes)
         self.write_notes(
             notes=notes, 
-            output_path=output_path,
-            tags=tags, 
-            overwrite_older_notes=overwrite_older_notes,
-            skip_confirmation=skip_confirmation,
         )
 
         end = default_timer()
 
         logging.info(f"NoteHammer: Processed {len(notes)} notes in {round(end - start, 2)} seconds.")
         
-    def backup_notes(self, input_path: str, backup_path: str):
-        backup_folder = os.path.join(backup_path, f"backup_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
+    def backup_notes(self):
+        backup_folder = os.path.join(self.backup_path, f"backup_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
 
-        shutil.copytree(input_path, backup_folder)
+        shutil.copytree(self.input_path, backup_folder)
 
-    def extract_notes(self, input_path: str) -> list[Note]:
+    def extract_notes(self) -> list[Note]:
         """
         Args:
             input_path (str): Either path to a single HTML file or a directory (or a tree of directories) containing HTML files.
@@ -63,14 +65,14 @@ class NoteHammer():
         Returns:
             list[Note]: _description_
         """
-        logging.info(f"NoteHammer: Started reading html files from {input_path}.")
+        logging.info(f"NoteHammer: Reading html files from {self.input_path}.")
         
-        assert os.path.isdir(input_path) or os.path.splitext(input_path)[1] == ".html"
-        walk = list(os.walk(input_path))
+        assert os.path.isdir(self.input_path) or os.path.splitext(self.input_path)[1] == ".html"
+        walk = list(os.walk(self.input_path))
         notes: list[Note] = []
 
-        if not walk and input_path.endswith(".html"):
-            notes.append(Note.from_kindle_html(input_path))
+        if not walk and self.input_path.endswith(".html"):
+            notes.append(Note.from_kindle_html(self.input_path))
         else:
             all_html_file_paths = []
             for root, dirs, files in walk:
@@ -80,25 +82,25 @@ class NoteHammer():
                     notes.append(Note.from_kindle_html(html_file_path))
         return notes
 
-    def write_notes(self, notes: list[Note], output_path: str, overwrite_older_notes: bool = False, skip_confirmation: bool = False):
-        logging.info(f"NoteHammer: Writing markdown notes to {output_path}.")
+    def write_notes(self, notes: list[Note]):
+        logging.info(f"NoteHammer: Writing markdown notes to {self.output_path}.")
         
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
+        if not os.path.exists(self.output_path):
+            os.makedirs(self.output_path)
         
-        assert os.path.isdir(output_path)
+        assert os.path.isdir(self.output_path)
         for note in notes:
-            self.write_note(note, output_path, overwrite_older_notes=overwrite_older_notes, skip_confirmation=skip_confirmation)
+            self.write_note(note)
 
-    def write_note(self, note: Note, output_folder: str, overwrite_older_notes: bool = False, skip_confirmation: bool = False):
+    def write_note(self, note: Note):
         filename = self.remove_invalid_chars_from_filename(self.remove_tags(note.title)) + ".md"
-        filepath = os.path.join(output_folder, filename)
+        filepath = os.path.join(self.output_path, filename)
         
-        if not overwrite_older_notes and os.path.exists(filepath):
+        if not self.overwrite_older_notes and os.path.exists(filepath):
             logging.warning(f"NoteHammer: Skipping file {filepath} because it already exists . Use -o or --overwrite-older-notes flag to overwrite such notes.")
             return
         
-        if not skip_confirmation:
+        if not self.skip_confirmation:
             confirmed = click.confirm(f'Are you sure you want to overwrite existing note {filepath}? Use -sc or --skip-confirmations flag to not get asked again.', abort=False)
             if not confirmed:
                 logging.info(f"NoteHammer: Skipping file {filepath} because it already exists.")
