@@ -18,7 +18,7 @@ logging.basicConfig(
     level=logging.DEBUG
 )
 logging.getLogger().addHandler(logging.StreamHandler())
-logging.info(f"Starting NoteHammer at {timestamp}.")
+logging.info(f"Starting NoteHammer at {timestamp}")
 
 @click.group()
 def cli():

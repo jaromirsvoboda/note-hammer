@@ -20,9 +20,9 @@ class NoteHammer():
         overwrite_older_notes: bool = False, 
         skip_confirmation: bool = False
     ):
-        self.input_path = input_path
-        self.output_path = output_path
-        self.backup_path = backup_path
+        self.input_path = os.path.abspath(input_path)
+        self.output_path = os.path.abspath(output_path)
+        self.backup_path = os.path.abspath(backup_path)
         self.tags: list[str] = tags
         self.overwrite_older_notes: bool = overwrite_older_notes 
         self.skip_confirmation: bool = skip_confirmation
@@ -37,10 +37,10 @@ class NoteHammer():
     ):
         start = default_timer()
         if self.backup_path:
-            logging.info(f"NoteHammer: Backing up notes to {self.backup_path}.")
+            logging.info(f"NoteHammer: Backing up notes to {self.backup_path}")
             self.backup_notes()
         
-        logging.info(f"NoteHammer: Extracting markdown notes from Kindle html files in {self.input_path}, md files will be saved to {self.output_path}.")
+        logging.info(f"NoteHammer: Extracting markdown notes from Kindle html files in {self.input_path}, md files will be saved to {self.output_path}")
         
         notes = self.extract_notes()
         notes = self.remove_duplicate_notes(notes)
@@ -50,7 +50,7 @@ class NoteHammer():
 
         end = default_timer()
 
-        logging.info(f"NoteHammer: Processed {len(notes)} notes in {round(end - start, 2)} seconds.")
+        logging.info(f"NoteHammer: Processed {len(notes)} notes in {round(end - start, 2)} seconds")
         
     def backup_notes(self):
         backup_folder = os.path.join(self.backup_path, f"backup_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
@@ -65,7 +65,7 @@ class NoteHammer():
         Returns:
             list[Note]: _description_
         """
-        logging.info(f"NoteHammer: Reading html files from {self.input_path}.")
+        logging.info(f"NoteHammer: Reading html files from {self.input_path}")
         
         assert os.path.isdir(self.input_path) or os.path.splitext(self.input_path)[1] == ".html"
         walk = list(os.walk(self.input_path))
@@ -83,7 +83,7 @@ class NoteHammer():
         return notes
 
     def write_notes(self, notes: list[Note]):
-        logging.info(f"NoteHammer: Writing markdown notes to {self.output_path}.")
+        logging.info(f"NoteHammer: Writing markdown notes to {self.output_path}")
         
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
@@ -97,13 +97,13 @@ class NoteHammer():
         filepath = os.path.join(self.output_path, filename)
         
         if not self.overwrite_older_notes and os.path.exists(filepath):
-            logging.warning(f"NoteHammer: Skipping file {filepath} because it already exists . Use -o or --overwrite-older-notes flag to overwrite such notes.")
+            logging.warning(f"NoteHammer: Skipping file {filepath} because it already exists . Use -o or --overwrite-older-notes flag to overwrite such notes")
             return
         
         if not self.skip_confirmation:
             confirmed = click.confirm(f'Are you sure you want to overwrite existing note {filepath}? Use -sc or --skip-confirmations flag to not get asked again.', abort=False)
             if not confirmed:
-                logging.info(f"NoteHammer: Skipping file {filepath} because it already exists.")
+                logging.info(f"NoteHammer: Skipping file {filepath} because it already exists")
                 return
         
         if os.path.exists(filepath):
@@ -114,7 +114,7 @@ class NoteHammer():
     
     @staticmethod     
     def remove_duplicate_notes(notes: list[Note]) -> list[Note]:
-        logging.info("NoteHammer: Removing duplicate notes...")
+        logging.info("NoteHammer: Removing duplicate notes")
         
         note_freq = defaultdict(int)
         for note in notes:
@@ -128,7 +128,7 @@ class NoteHammer():
             else:
                 duplicates.extend([note] * freq)
         for duplicate in duplicates:
-            logging.warning(f"NoteHammer: Removed duplicate note {duplicate.title}.")
+            logging.warning(f"NoteHammer: Removed duplicate note {duplicate.title}")
         return unique_notes
 
     @staticmethod
