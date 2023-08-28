@@ -27,7 +27,7 @@ class Note():
                self.sections_to_notes == other.sections_to_notes
     
     @classmethod
-    def from_kindle_html(cls, html_path: str):
+    def from_kindle_html(cls, html_path: str, default_tags: list[str]):
         assert os.path.splitext(html_path)[1] == ".html"
         with open(html_path, encoding='utf-8') as fp:
             # content = fp.read()
@@ -55,13 +55,14 @@ class Note():
                 citation=cls.remove_leading_and_trailing_newlines(citation.text) if citation else "",
                 tags=cls.extract_tags(
                     authors=authors.text if authors else "",
-                    title=title.text if title else ""
+                    title=title.text if title else "",
+                    default_tags=default_tags
                 ),
                 sections_to_notes=frozen_section_to_notes
             )
             
     @staticmethod
-    def extract_tags(authors:str, title: str, default_tags: list[str] = ["NoteHammer"]) -> list[str]:
+    def extract_tags(authors:str, title: str, default_tags: list[str]) -> list[str]:
         tags = set(default_tags) # set to avoid duplicates
         
         # region tags from title
