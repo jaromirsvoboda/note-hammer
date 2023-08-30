@@ -9,3 +9,4 @@
 - [ ] Extract vocab
 - [ ] Automatic translation of extracted vocabulary
 - [x] Remove duplicate notes (from the original source htmls or from the result md notes?)
+- [ ] KRDS + KindleUnpack (https://github.com/kevinhendricks/KindleUnpack) PoC
