@@ -9,3 +9,7 @@
 - [ ] Extract vocab
 - [ ] Automatic translation of extracted vocabulary
 - [x] Remove duplicate notes (from the original source htmls or from the result md notes?)
+
+# How to run
+
+setx PATH "%PATH%;C:\Projects\NoteHammer\adb-platform-tools-win"
