@@ -16,14 +16,14 @@ class NoteHammer():
         input_path: str, 
         output_path: str,
         backup_path: str,
-        tags: list[str] = [],
+        default_tags: list[str] = [],
         overwrite_older_notes: bool = False, 
         skip_confirmation: bool = False
     ):
         self.input_path = os.path.abspath(input_path)
         self.output_path = os.path.abspath(output_path)
         self.backup_path = os.path.abspath(backup_path)
-        self.tags: list[str] = tags
+        self.default_tags: list[str] = default_tags
         self.overwrite_older_notes: bool = overwrite_older_notes 
         self.skip_confirmation: bool = skip_confirmation
     
@@ -72,14 +72,14 @@ class NoteHammer():
         notes: list[Note] = []
 
         if not walk and self.input_path.endswith(".html"):
-            notes.append(Note.from_kindle_html(self.input_path))
+            notes.append(Note.from_kindle_html(self.input_path, default_tags=self.default_tags))
         else:
             all_html_file_paths = []
             for root, dirs, files in walk:
                 all_html_file_paths.extend([os.path.join(root, file) for file in files if file.endswith(".html")])
             with click.progressbar(all_html_file_paths, label="NoteHammer: Reading html files") as bar:
                 for html_file_path in bar:
-                    notes.append(Note.from_kindle_html(html_file_path))
+                    notes.append(Note.from_kindle_html(html_file_path, default_tags=self.default_tags))
         return notes
 
     def write_notes(self, notes: list[Note]):
