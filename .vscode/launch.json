@@ -2,6 +2,38 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Kindle Highlight Exporter",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/note_hammer/kindle_highlight_exporter.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "pythonPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "DEBUG_LEVEL": "INFO",
+                "VIRTUAL_ENV": "${workspaceFolder}/.venv"
+            },
+            "args": []
+        },
+        {
+            "name": "Kindle UI Inspector",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/note_hammer/kindle_ui_inspector.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "pythonPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "DEBUG_LEVEL": "INFO",
+                "VIRTUAL_ENV": "${workspaceFolder}/.venv"
+            },
+            "args": []
+        },
+        {
             "name": "Extract my notes",
             "type": "python",
             "request": "launch",
