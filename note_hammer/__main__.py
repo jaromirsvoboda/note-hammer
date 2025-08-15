@@ -7,6 +7,7 @@ import click
 from pathlib import Path
 
 from note_hammer.note_hammer import NoteHammer
+from note_hammer.android_automation import AndroidKindleAutomator
 
 
 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S_%p")
@@ -46,6 +47,67 @@ def extract_kindle(input_path: str, output_path: str, backup_path: str, default_
     )
     
     note_hammer.process_kindle_notes()
+
+
+@cli.command(name="automate_android")
+@click.option('--device', help='ADB device ID (optional if only one device connected)')
+@click.option('--collection', default='To Export', help='Name of the Kindle collection to export')
+@click.option('--export-delay', default=3.0, type=float, help='Delay in seconds after each export operation')
+@click.option('--onedrive-path', help='Path to OneDrive folder where exported files are saved')
+@click.option('--output-path', default=r".\export", help='Path where final markdown notes will be saved')
+@click.option('--backup-path', default=r".\backup", help='Path for backing up original files')
+@click.option('-dt', '--default-tags', multiple=True, help='Tags to add to all exported notes')
+@click.option('--skip-confirmation', is_flag=True, help='Skip confirmation prompts')
+def automate_android(device, collection, export_delay, onedrive_path, output_path, backup_path, default_tags, skip_confirmation):
+    """Automate complete note extraction from Android Kindle app collection"""
+    
+    if not skip_confirmation:
+        click.confirm(f'This will automate your Android device to export notes from "{collection}" collection. Continue?', abort=True)
+    
+    # Step 1: Automate Android app to export notes
+    click.echo(f"Starting Android automation for collection: {collection}")
+    automator = AndroidKindleAutomator(
+        device_id=device,
+        collection_name=collection,
+        export_delay=export_delay
+    )
+    
+    try:
+        exported_count = automator.export_collection_notes()
+        click.echo(f"Android automation complete. Exported {exported_count} books to OneDrive.")
+        
+        if exported_count == 0:
+            click.echo("No books were exported. Check the logs for details.")
+            return
+            
+    except Exception as e:
+        click.echo(f"Android automation failed: {e}")
+        logging.error(f"Android automation error: {e}")
+        return
+    
+    # Step 2: Process exported files with NoteHammer
+    if onedrive_path:
+        click.echo(f"Processing exported files from OneDrive: {onedrive_path}")
+        
+        # Wait a moment for OneDrive sync
+        click.echo("Waiting for OneDrive to sync...")
+        time.sleep(10)
+        
+        note_hammer = NoteHammer(
+            input_path=onedrive_path,
+            output_path=output_path,
+            backup_path=backup_path,
+            default_tags=list(default_tags),
+            overwrite_older_notes=True,
+            skip_confirmation=True
+        )
+        
+        note_hammer.process_kindle_notes()
+        click.echo(f"Complete! Markdown notes saved to: {output_path}")
+    else:
+        click.echo("OneDrive path not specified. You'll need to manually process the exported files.")
+        click.echo(f"Use: note-hammer extract_kindle -i <onedrive_kindle_folder> -o {output_path}")
+
 
 if __name__ == '__main__':
     if len(sys.argv) == 1:

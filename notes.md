@@ -1,6 +1,6 @@
 #### TODO
 
-- [x] Better extracting tag from authors (remove spaces, camel case, etc)
+- [x] Improve extracting tags from authors (remove spaces, camel case, etc)
 - [ ] Move attachments to separate folder
 - [ ] Clean database
 - [x] Overwrite older notes option
