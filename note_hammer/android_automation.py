@@ -80,6 +80,13 @@ class AndroidKindleAutomator:
         """Get current UI hierarchy"""
         self.run_adb_command(["shell", "uiautomator", "dump", "/sdcard/ui_dump.xml"])
         return self.run_adb_command(["shell", "cat", "/sdcard/ui_dump.xml"])
+    
+    def get_ui_text_elements(self) -> List[str]:
+        """Get just text elements from UI (more efficient than full dump)"""
+        ui_dump = self.get_ui_dump()
+        import re
+        text_pattern = r'text="([^"]+)"'
+        return [text for text in re.findall(text_pattern, ui_dump) if text and len(text) > 2]
 
     def find_elements_by_text(self, text: str) -> List[UIElement]:
         """Find UI elements containing specific text"""
@@ -133,13 +140,9 @@ class AndroidKindleAutomator:
             logging.info("Using fallback coordinates for LIBRARY tab")
             self.tap(675, 2119)
         
-        # Debug: dump UI after clicking Library
+        # Wait for Library to load
         time.sleep(3)
-        try:
-            self.run_adb_command(["shell", "uiautomator", "dump", "/sdcard/library_ui.xml"])
-            logging.info("UI dump after Library click saved to /sdcard/library_ui.xml")
-        except Exception as e:
-            logging.warning(f"Could not dump library UI: {e}")
+        logging.info("Library loaded, looking for collections")
         
         # Look for Collections or the collection name directly
         if self.wait_for_text("Collections"):
@@ -156,11 +159,7 @@ class AndroidKindleAutomator:
             logging.error(f"Could not find collection: {self.collection_name}")
             
             # Debug: show what text elements we can find
-            ui_dump = self.get_ui_dump()
-            import re
-            text_pattern = r'text="([^"]+)"'
-            all_text = re.findall(text_pattern, ui_dump)
-            visible_text = [text for text in all_text if text and len(text) > 2]
+            visible_text = self.get_ui_text_elements()
             logging.info(f"Available text elements: {visible_text[:10]}")  # Show first 10
             
             return False
@@ -174,36 +173,71 @@ class AndroidKindleAutomator:
         """Get list of currently visible books on screen"""
         ui_dump = self.get_ui_dump()
         
-        # Debug: log part of UI dump to see structure
-        logging.debug(f"UI dump length: {len(ui_dump)}")
-        
-        # Look for book title elements specifically
+        # Look for clickable book button elements (better than title text)
         import re
-        # Pattern that matches the actual XML structure we see
-        book_pattern = r'text="([^"]+)"\s+resource-id="com\.amazon\.kindle:id/lib_book_row_title"[^>]+bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
-        matches = re.findall(book_pattern, ui_dump)
+        # First try to find the clickable book buttons that contain the whole book
+        button_pattern = r'content-desc="([^"]*book[^"]*)"[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+        matches = re.findall(button_pattern, ui_dump, re.IGNORECASE)
         
-        logging.info(f"Primary pattern found {len(matches)} matches")
+        logging.info(f"Book button pattern found {len(matches)} matches")
         
-        # If the above doesn't work, try more permissive approaches
+        # If no book buttons found, try title elements but get parent bounds
         if not matches:
-            # Try with more flexible spacing
+            # Pattern that matches the actual XML structure we see
+            book_pattern = r'text="([^"]+)"\s+resource-id="com\.amazon\.kindle:id/lib_book_row_title"[^>]+bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+            title_matches = re.findall(book_pattern, ui_dump)
+            logging.info(f"Title pattern found {len(title_matches)} matches")
+            
+            # For each title, find its parent button element
+            for title, tx1, ty1, tx2, ty2 in title_matches:
+                # Look for parent button that contains this title
+                parent_pattern = rf'<node[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*>.*?{re.escape(title[:30])}'
+                parent_match = re.search(parent_pattern, ui_dump, re.DOTALL)
+                if parent_match:
+                    px1, py1, px2, py2 = parent_match.groups()
+                    matches.append((title, px1, py1, px2, py2))
+                    logging.info(f"Found parent button for: {title[:50]}")
+                else:
+                    # Fallback to title coordinates but expand the click area
+                    tx1, ty1, tx2, ty2 = int(tx1), int(ty1), int(tx2), int(ty2)
+                    # Expand left to cover the book cover area
+                    expanded_x1 = max(0, tx1 - 200)  # Go left to cover book cover
+                    expanded_y1 = ty1 - 50  # Go up a bit
+                    expanded_y2 = ty2 + 100  # Go down to cover book area
+                    matches.append((title, str(expanded_x1), str(expanded_y1), str(tx2), str(expanded_y2)))
+                    logging.info(f"Using expanded coordinates for: {title[:50]}")
+        
+        # Alternative patterns as fallbacks
+        if not matches:
             alt_pattern1 = r'text="([^"]+)"[^>]*resource-id="com\.amazon\.kindle:id/lib_book_row_title"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
             matches = re.findall(alt_pattern1, ui_dump)
             logging.info(f"Alternative pattern 1 found {len(matches)} matches")
         
+        # Debug: show relevant parts if no matches found
         if not matches:
-            # Try reversed order
-            alt_pattern2 = r'resource-id="com\.amazon\.kindle:id/lib_book_row_title"[^>]*text="([^"]+)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
-            matches = re.findall(alt_pattern2, ui_dump)
-            logging.info(f"Alternative pattern 2 found {len(matches)} matches")
-        
-        logging.info(f"Found {len(matches)} book title matches with regex")
-        
-        # Debug: also try to find the resource-id pattern alone
-        resource_pattern = r'resource-id="com\.amazon\.kindle:id/lib_book_row_title"'
-        resource_matches = re.findall(resource_pattern, ui_dump)
-        logging.info(f"Found {len(resource_matches)} lib_book_row_title elements")
+            resource_pattern = r'resource-id="com\.amazon\.kindle:id/lib_book_row_title"'
+            resource_matches = re.findall(resource_pattern, ui_dump)
+            logging.info(f"Found {len(resource_matches)} lib_book_row_title elements")
+            
+            # Show sample book elements from UI
+            book_sections = re.findall(r'<node[^>]*lib_book_row_title[^>]*>.*?</node>', ui_dump, re.DOTALL)
+            if book_sections:
+                logging.info("Sample book element from UI:")
+                # Show first book element, truncated
+                sample = book_sections[0][:400] + "..." if len(book_sections[0]) > 400 else book_sections[0]
+                logging.info(sample)
+                
+            # Try to find clickable book buttons instead
+            book_button_pattern = r'content-desc="([^"]*)" checkable="false"[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+            button_matches = re.findall(book_button_pattern, ui_dump)
+            if button_matches:
+                logging.info("Found clickable book buttons:")
+                for desc, x1, y1, x2, y2 in button_matches[:3]:  # Show first 3
+                    if any(keyword in desc.lower() for keyword in ['book', 'interview', 'mexico', 'kant']):
+                        logging.info(f"  - {desc[:50]}... at ({x1},{y1})-({x2},{y2})")
+                        center_x = (int(x1) + int(x2)) // 2
+                        center_y = (int(y1) + int(y2)) // 2
+                        matches.append((desc, str(center_x), str(center_y), str(center_x), str(center_y)))
         
         books = []
         for title, x1, y1, x2, y2 in matches:
@@ -218,14 +252,8 @@ class AndroidKindleAutomator:
         """Get list of all books in collection, with scrolling pagination"""
         time.sleep(2)  # Wait for collection to load
         
-        # Debug: dump UI to file for inspection
-        logging.info("Dumping UI for debugging...")
-        try:
-            self.run_adb_command(["shell", "uiautomator", "dump", "/sdcard/debug_collection.xml"])
-            debug_ui = self.run_adb_command(["shell", "cat", "/sdcard/debug_collection.xml"])
-            logging.info(f"UI dump saved, length: {len(debug_ui)}")
-        except Exception as e:
-            logging.warning(f"Could not dump UI for debugging: {e}")
+        # Debug: check what's visible in collection
+        logging.info("Checking collection contents...")
         
         all_books = []
         seen_titles = set()
@@ -280,58 +308,53 @@ class AndroidKindleAutomator:
         logging.info(f"Exporting notes for: {book.text}")
         
         # Long press on book to open context menu
+        logging.info(f"Long pressing book at ({book.x}, {book.y})")
         self.run_adb_command([
             "shell", "input", "swipe", 
             str(book.x), str(book.y), str(book.x), str(book.y), "1000"
         ])
-        time.sleep(2)
+        time.sleep(3)
         
-        # Look for "View Notes & Highlights" or similar option
-        if self.wait_for_text("Notes"):
-            notes_elements = self.find_elements_by_text("Notes")
-            self.tap(notes_elements[0].x, notes_elements[0].y)
-        else:
-            # Alternative: tap book normally then look for notes option
-            self.tap(book.x, book.y)
-            time.sleep(2)
-            
-            # Look for notes/highlights menu option
-            if not self.wait_for_text("Notes"):
-                logging.warning(f"Could not find notes option for {book.text}")
-                self.press_key("KEYCODE_BACK")
-                return False
+        # Check what options appeared after long press
+        visible_text = self.get_ui_text_elements()
+        logging.info(f"Available options after long press: {[t for t in visible_text if len(t) < 50]}")
         
-        # Wait for notes view to load
-        time.sleep(2)
+        # Also show relevant UI snippets with clickable elements
+        ui_dump = self.get_ui_dump()
+        import re
+        clickable_elements = re.findall(r'<node[^>]*clickable="true"[^>]*text="([^"]+)"[^>]*>', ui_dump)
+        if clickable_elements:
+            logging.info(f"Clickable elements: {[t for t in clickable_elements if t and len(t) < 50]}")
         
-        # Look for share/export button (usually three dots or share icon)
-        share_elements = self.find_elements_by_text("Share") or self.find_elements_by_text("⋮")
-        if not share_elements:
-            logging.warning(f"Could not find share option for {book.text}")
-            self.press_key("KEYCODE_BACK")
-            return False
+        # Look for various possible note/highlight options
+        note_options = ["Notes", "Highlights", "View Notes", "Notes & Highlights", "Export", "Share"]
         
-        self.tap(share_elements[0].x, share_elements[0].y)
-        time.sleep(1)
+        for option in note_options:
+            if self.wait_for_text(option, timeout=2.0):
+                logging.info(f"Found option: {option}")
+                option_elements = self.find_elements_by_text(option)
+                self.tap(option_elements[0].x, option_elements[0].y)
+                time.sleep(2)
+                return True
         
-        # Look for OneDrive in share menu
-        if self.wait_for_text("OneDrive"):
-            onedrive_elements = self.find_elements_by_text("OneDrive")
-            self.tap(onedrive_elements[0].x, onedrive_elements[0].y)
-            
-            # Wait for OneDrive to process
-            time.sleep(self.export_delay)
-            
-            # Navigate back to collection
-            self.press_key("KEYCODE_BACK")
-            self.press_key("KEYCODE_BACK")
-            
-            logging.info(f"Successfully exported notes for {book.text}")
-            return True
-        else:
-            logging.warning(f"Could not find OneDrive option for {book.text}")
-            self.press_key("KEYCODE_BACK")
-            return False
+        # If no context menu appeared, try regular tap to open book
+        logging.info("No context menu found, trying to open book directly")
+        self.tap(book.x, book.y)
+        time.sleep(3)
+        
+        # Check what's available in the opened book
+        visible_text = self.get_ui_text_elements()
+        logging.info(f"Options in opened book: {[t for t in visible_text if len(t) < 50]}")
+        
+        # Show clickable options in opened book
+        ui_dump = self.get_ui_dump()
+        clickable_elements = re.findall(r'<node[^>]*clickable="true"[^>]*text="([^"]+)"[^>]*>', ui_dump)
+        if clickable_elements:
+            logging.info(f"Clickable options in book: {[t for t in clickable_elements if t and len(t) < 50]}")
+        
+        logging.warning(f"Could not find notes export option for {book.text}")
+        self.press_key("KEYCODE_BACK")
+        return False
 
     def export_collection_notes(self) -> int:
         """Export notes for all books in the collection"""

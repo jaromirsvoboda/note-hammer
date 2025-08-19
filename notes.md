@@ -9,3 +9,14 @@
 - [ ] Extract vocab
 - [ ] Automatic translation of extracted vocabulary
 - [x] Remove duplicate notes (from the original source htmls or from the result md notes?)
+- [x] Android Kindle automation for note export
+  - [x] Basic ADB connectivity and device detection
+  - [x] Kindle app launching and navigation
+  - [x] Collection navigation and book detection
+  - [x] Pagination/scrolling for large collections (127+ books)
+  - [x] Flexible regex patterns for book title detection
+  - [x] Max books limit for testing (--max-books argument)
+  - [ ] Note export process automation
+  - [ ] OneDrive sharing integration
+  - [ ] Error handling and recovery
+  - [ ] Full end-to-end workflow testing
