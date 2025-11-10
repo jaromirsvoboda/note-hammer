@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(del nul)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
