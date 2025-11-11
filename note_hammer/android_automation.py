@@ -187,31 +187,126 @@ class AndroidKindleAutomator:
 
         # Wait for Library to load
         time.sleep(3)
-        logging.info("Library loaded, looking for collections")
+        logging.info("Library loaded, checking if we need to switch to Collections view")
+        
+        # Check and close View/Sort menu if it's open (multiple times if needed)
+        max_close_attempts = 3
+        for attempt in range(max_close_attempts):
+            ui_dump = self.get_ui_dump()
+            if "lib_view_type_radio_group" in ui_dump or "design_bottom_sheet" in ui_dump:
+                logging.info(f"View/Sort menu is open (attempt {attempt + 1}), closing it")
+                self.press_key("KEYCODE_BACK")
+                time.sleep(1.5)
+            else:
+                logging.info("View/Sort menu is closed")
+                break
+        
+        # Now look for the collection card on the main library screen
+        logging.info(f"Looking for collection card: {self.collection_name}")
+        
+        # Wait a bit for the library view to fully render
+        time.sleep(1)
+        
+        # Get UI dump for analysis
+        ui_dump = self.get_ui_dump()
+        import re
+        
+        # DEBUG: Show ALL clickable elements in the view
+        print("\n" + "=" * 80)
+        print("DEBUG: Analyzing all clickable elements in current view")
+        print("=" * 80)
+        logging.info("=" * 80)
+        logging.info("DEBUG: Analyzing all clickable elements in current view")
+        logging.info("=" * 80)
+        
+        clickable_pattern = r'clickable="true"[^>]*(?:text="([^"]*)")?[^>]*(?:content-desc="([^"]*)")?[^>]*(?:resource-id="([^"]*)")?[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+        clickable_matches = re.findall(clickable_pattern, ui_dump)
+        
+        for idx, match in enumerate(clickable_matches, 1):
+            text, desc, res_id, x1, y1, x2, y2 = match
+            center_x = (int(x1) + int(x2)) // 2
+            center_y = (int(y1) + int(y2)) // 2
+            
+            display_text = text or desc or res_id.split('/')[-1] if res_id else "(no text)"
+            msg = f"  [{idx}] Clickable: '{display_text}' at ({center_x}, {center_y}) - bounds=[{x1},{y1}][{x2},{y2}]"
+            print(msg)
+            logging.info(msg)
+            if res_id:
+                res_msg = f"      Resource ID: {res_id}"
+                print(res_msg)
+                logging.info(res_msg)
+        
+        print("=" * 80 + "\n")
+        logging.info("=" * 80)
+        
+        # Look for collection card using parsed XML to avoid ordering issues in attributes
+        logging.info(f"Looking for collection card with content-desc containing: {self.collection_name}")
 
-        # Look for Collections or the collection name directly
-        if self.wait_for_text("Collections"):
-            logging.info("Found Collections, tapping it")
-            collections_elements = self.find_elements_by_text("Collections")
-            self.tap(collections_elements[0].x, collections_elements[0].y)
-            time.sleep(2)
-        else:
-            logging.info("No Collections found, looking directly for collection name")
-
-        # Find and tap the target collection
-        logging.info(f"Looking for collection: {self.collection_name}")
-        if not self.wait_for_text(self.collection_name):
-            logging.error(f"Could not find collection: {self.collection_name}")
-
-            # Debug: show what text elements we can find
-            visible_text = self.get_ui_text_elements()
-            logging.info(f"Available text elements: {visible_text[:10]}")  # Show first 10
-
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(ui_dump)
+        except Exception as parse_error:
+            logging.error(f"Failed to parse UI XML: {parse_error}")
             return False
 
-        collection_elements = self.find_elements_by_text(self.collection_name)
-        self.tap(collection_elements[0].x, collection_elements[0].y)
+        def parse_bounds(bounds: str):
+            match = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+            if not match:
+                return None
+            x1, y1, x2, y2 = map(int, match.groups())
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
+            return x1, y1, x2, y2, center_x, center_y
 
+        collection_nodes = []
+        target_lower = self.collection_name.lower()
+
+        for node in root.iter("node"):
+            if node.get("class") != "android.widget.Button":
+                continue
+
+            desc = (node.get("content-desc") or "").strip()
+            if target_lower not in desc.lower():
+                continue
+
+            bounds = node.get("bounds")
+            parsed = parse_bounds(bounds or "")
+            if not parsed:
+                continue
+
+            x1, y1, x2, y2, center_x, center_y = parsed
+            collection_nodes.append((center_y, center_x, x1, y1, x2, y2, desc))
+
+        msg = f"Found {len(collection_nodes)} collection card Button elements matching '{self.collection_name}'"
+        print(msg)
+        logging.info(msg)
+
+        if not collection_nodes:
+            err_msg = f"Could not find collection card for: {self.collection_name}"
+            print(err_msg)
+            logging.error(err_msg)
+            print("HINT: Looking for android.widget.Button with content-desc containing collection name")
+            logging.error("HINT: Looking for android.widget.Button with content-desc containing collection name")
+            return False
+
+        # Sort by vertical position to prefer the topmost matching card if duplicates exist
+        collection_nodes.sort(key=lambda item: item[0])
+        center_y, center_x, x1, y1, x2, y2, desc = collection_nodes[0]
+
+        decision_msg = (
+            f"DECISION: Will tap collection card '{self.collection_name}'"
+            f" (content-desc='{desc}') at ({center_x}, {center_y})"
+        )
+        print(decision_msg)
+        logging.info(decision_msg)
+        print("=" * 80 + "\n")
+        logging.info("=" * 80)
+
+        # Tap the collection card
+        self.tap(center_x, center_y)
+        time.sleep(2)
+        
+        logging.info(f"Successfully tapped collection: {self.collection_name}")
         return True
 
     def get_visible_books(self) -> List[UIElement]:

@@ -75,6 +75,7 @@ class KindleHighlightExporter:
                 "highlight_export": 2
             },
             "retry_attempts": 3,
+            "target_collection": "To Export",
             "ui_elements": {
                 "library": ["Library", "书库", "Bibliothèque"],  # Multiple languages
                 "home": ["Home", "主页", "Accueil"],
@@ -428,84 +429,8 @@ to prevent it from locking during the export.
 
                 time.sleep(self.config["wait_times"]["navigation"])
 
-            # Find Collections view - Try multiple methods
-            collections_found = False
-
-            # Method 1: Try sort/view options button (the button on the right)
-            sort_button = self.device(resourceId="com.amazon.kindle:id/sort_filter")
-            if sort_button.exists:
-                self.logger.info("Found sort/view options button, clicking it")
-                sort_button.click()
-                time.sleep(1.0)
-
-                # Take screenshot to see what options appear
-                self.take_debug_screenshot("sort_options_menu")
-                self.dump_ui_hierarchy()
-
-                # Look for Collections option
-                if self.find_and_click("Collections", "收藏夹", "collections"):
-                    collections_found = True
-                    self.logger.info("Found and clicked Collections in sort/view menu")
-                else:
-                    self.logger.warning("Collections not found in sort/view menu, trying back")
-                    self.device.press("back")
-                    time.sleep(0.5)
-
-            # Method 2: Try filter button (the icon with sliders on the left)
-            if not collections_found:
-                filter_button = self.device(resourceId="com.amazon.kindle:id/refine_menu_button_container")
-                if filter_button.exists:
-                    self.logger.info("Found filter button, clicking it")
-                    filter_button.click()
-                    time.sleep(1.0)
-
-                    # Take screenshot to see what's in the filter menu
-                    self.take_debug_screenshot("filter_menu")
-                    self.dump_ui_hierarchy()
-
-                    # Look for Collections option in the filter menu
-                    if self.find_and_click("Collections", "收藏夹", "collections"):
-                        collections_found = True
-                        self.logger.info("Found and clicked Collections in filter menu")
-                    else:
-                        self.logger.warning("Collections not found in filter menu, trying back")
-                        self.device.press("back")
-                        time.sleep(0.5)
-
-            # Method 3: Direct "Collections" text (if it's visible on main screen)
-            if not collections_found and self.find_and_click("Collections", "收藏夹", "collections"):
-                collections_found = True
-                self.logger.info("Found Collections as direct text")
-
-            # Method 4: Try the "More" tab at the bottom
-            if not collections_found:
-                more_tab = self.device(resourceId="com.amazon.kindle:id/more_tab")
-                if more_tab.exists:
-                    self.logger.info("Trying More tab")
-                    more_tab.click()
-                    time.sleep(1.0)
-
-                    # Take screenshot
-                    self.take_debug_screenshot("more_tab")
-                    self.dump_ui_hierarchy()
-
-                    # Look for Collections
-                    if self.find_and_click("Collections", "收藏夹", "collections"):
-                        collections_found = True
-                        self.logger.info("Found Collections in More tab")
-                    else:
-                        # Go back to library
-                        library_tab = self.device(resourceId="com.amazon.kindle:id/library_tab")
-                        if library_tab.exists:
-                            library_tab.click()
-                            time.sleep(0.5)
-
-            if not collections_found:
-                # Take debug screenshots before failing
-                self.take_debug_screenshot("no_collections_found")
-                self.dump_ui_hierarchy()
-                raise KindleUIError("Could not find Collections option. Please check the debug screenshots in ui_dumps/ folder.")
-
+            # We expect collection cards to be present directly on the Library screen.
+            # Avoid tapping sort/filter/more controls so we stay on the grid of collections.
             time.sleep(self.config["wait_times"]["navigation"])
 
             # Find the specific collection
@@ -514,27 +439,20 @@ to prevent it from locking during the export.
             scroll_count = 0
 
             while scroll_count < max_scrolls and not collection_found:
-                # Method 1: Try to find by collection_title text
+                # First, look for the collection card button (content-desc contains the collection name)
+                collection_button = self.device(className="android.widget.Button", descriptionContains=collection_name)
+                if collection_button.exists:
+                    collection_button.click()
+                    collection_found = True
+                    self.logger.info(f"Clicked on collection '{collection_name}' via content-desc button")
+                    break
+
+                # Fallback: check for the title text element and tap it
                 collection_title = self.device(resourceId="com.amazon.kindle:id/collection_title", text=collection_name)
                 if collection_title.exists:
-                    # Get the parent button by finding a button that contains this title
-                    parent_button = self.device(className="android.widget.Button", descriptionContains=collection_name)
-                    if parent_button.exists:
-                        parent_button.click()
-                        collection_found = True
-                        self.logger.info(f"Clicked on collection '{collection_name}' via parent button")
-                        break
-                    else:
-                        # Try clicking on the title itself and hope it bubbles up
-                        collection_title.click()
-                        collection_found = True
-                        self.logger.info(f"Clicked on collection '{collection_name}' via title")
-                        break
-
-                # Method 2: Try generic find_and_click
-                if not collection_found and self.find_and_click(collection_name):
+                    collection_title.click()
                     collection_found = True
-                    self.logger.info(f"Found collection '{collection_name}' via find_and_click")
+                    self.logger.info(f"Clicked on collection '{collection_name}' via title element")
                     break
 
                 # Scroll down to find more collections
@@ -563,6 +481,8 @@ to prevent it from locking during the export.
     # ... [Previous export_document_highlights, process_documents, and other methods remain the same] ...
 
 def main():
+    exporter: Optional[KindleHighlightExporter] = None
+
     try:
         # Initialize exporter
         exporter = KindleHighlightExporter()
@@ -571,8 +491,8 @@ def main():
         exporter.start_kindle_app()
 
         try:
-            # Navigate to collection
-            collection_name = "YourCollectionName"  # Replace with your collection name
+            # Navigate to collection (default to configured target)
+            collection_name = exporter.config.get("target_collection", "To Export")
             exporter.navigate_to_collection(collection_name)
         except (KindleUIError, Exception) as e:
             print("\nError navigating Kindle UI:")
@@ -587,16 +507,22 @@ def main():
                 print(f"Screenshot saved to {screenshot_file}")
             sys.exit(1)
 
-        # Process all documents
-        processed_count, failed_documents = exporter.process_documents()
+        # Process documents only if implementation is available
+        process_documents_method = getattr(exporter, "process_documents", None)
+        if callable(process_documents_method):
+            processed_count, failed_documents = process_documents_method()
 
-        # Log summary
-        print("\nExport Summary:")
-        print(f"Processed {processed_count} documents")
-        if failed_documents:
-            print("\nFailed documents:")
-            for doc in failed_documents:
-                print(f"- {doc}")
+            print("\nExport Summary:")
+            print(f"Processed {processed_count} documents")
+            if failed_documents:
+                print("\nFailed documents:")
+                for doc in failed_documents:
+                    print(f"- {doc}")
+        else:
+            print("\nNavigation to collection complete.")
+            print("This legacy script does not implement document export.")
+            print("Use 'note-hammer automate_android' for the end-to-end export workflow.")
+            return
 
     except DeviceConnectionError as e:
         print("\nDevice Connection Error:")
@@ -608,7 +534,7 @@ def main():
         sys.exit(1)
     finally:
         # Cleanup
-        if 'exporter' in locals():
+        if exporter is not None:
             exporter.cleanup()
 
 if __name__ == "__main__":

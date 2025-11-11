@@ -65,6 +65,18 @@
                 "--default-tags", "Generated",
             ],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Automated Android Export",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "note_hammer",
+            "justMyCode": true,
+            "args": [
+                "automate_android",
+                "--collection", "To Export"
+            ],
+            "console": "integratedTerminal"
         }
     ]
 }
