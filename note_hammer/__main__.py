@@ -36,16 +36,16 @@ def cli():
 def extract_kindle(input_path: str, output_path: str, backup_path: str, default_tags: list[str], overwrite_older_notes: bool, skip_confirmation: bool):
     if not skip_confirmation:
         click.confirm(f'Are you sure you want to process the notes in {input_path}?', abort=True)
-    
+
     note_hammer = NoteHammer(
-        input_path=input_path, 
+        input_path=input_path,
         output_path=output_path,
         backup_path=backup_path,
         default_tags=default_tags,
-        overwrite_older_notes=overwrite_older_notes, 
+        overwrite_older_notes=overwrite_older_notes,
         skip_confirmation=skip_confirmation
     )
-    
+
     note_hammer.process_kindle_notes()
 
 

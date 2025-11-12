@@ -74,7 +74,9 @@
             "justMyCode": true,
             "args": [
                 "automate_android",
-                "--collection", "To Export"
+                "--collection", "To Export",
+                "--skip-confirmation",
+                "--max-books", "1"
             ],
             "console": "integratedTerminal"
         }

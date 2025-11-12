@@ -188,7 +188,7 @@ class AndroidKindleAutomator:
         # Wait for Library to load
         time.sleep(3)
         logging.info("Library loaded, checking if we need to switch to Collections view")
-        
+
         # Check and close View/Sort menu if it's open (multiple times if needed)
         max_close_attempts = 3
         for attempt in range(max_close_attempts):
@@ -200,17 +200,17 @@ class AndroidKindleAutomator:
             else:
                 logging.info("View/Sort menu is closed")
                 break
-        
+
         # Now look for the collection card on the main library screen
         logging.info(f"Looking for collection card: {self.collection_name}")
-        
+
         # Wait a bit for the library view to fully render
         time.sleep(1)
-        
+
         # Get UI dump for analysis
         ui_dump = self.get_ui_dump()
         import re
-        
+
         # DEBUG: Show ALL clickable elements in the view
         print("\n" + "=" * 80)
         print("DEBUG: Analyzing all clickable elements in current view")
@@ -218,15 +218,15 @@ class AndroidKindleAutomator:
         logging.info("=" * 80)
         logging.info("DEBUG: Analyzing all clickable elements in current view")
         logging.info("=" * 80)
-        
+
         clickable_pattern = r'clickable="true"[^>]*(?:text="([^"]*)")?[^>]*(?:content-desc="([^"]*)")?[^>]*(?:resource-id="([^"]*)")?[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
         clickable_matches = re.findall(clickable_pattern, ui_dump)
-        
+
         for idx, match in enumerate(clickable_matches, 1):
             text, desc, res_id, x1, y1, x2, y2 = match
             center_x = (int(x1) + int(x2)) // 2
             center_y = (int(y1) + int(y2)) // 2
-            
+
             display_text = text or desc or res_id.split('/')[-1] if res_id else "(no text)"
             msg = f"  [{idx}] Clickable: '{display_text}' at ({center_x}, {center_y}) - bounds=[{x1},{y1}][{x2},{y2}]"
             print(msg)
@@ -235,10 +235,10 @@ class AndroidKindleAutomator:
                 res_msg = f"      Resource ID: {res_id}"
                 print(res_msg)
                 logging.info(res_msg)
-        
+
         print("=" * 80 + "\n")
         logging.info("=" * 80)
-        
+
         # Look for collection card using parsed XML to avoid ordering issues in attributes
         logging.info(f"Looking for collection card with content-desc containing: {self.collection_name}")
 
@@ -305,7 +305,7 @@ class AndroidKindleAutomator:
         # Tap the collection card
         self.tap(center_x, center_y)
         time.sleep(2)
-        
+
         logging.info(f"Successfully tapped collection: {self.collection_name}")
         return True
 
