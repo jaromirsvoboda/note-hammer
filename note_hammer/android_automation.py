@@ -312,6 +312,7 @@ class AndroidKindleAutomator:
     def get_visible_books(self) -> List[UIElement]:
         """Get list of currently visible books on screen"""
         ui_dump = self.get_ui_dump()
+        logging.info(f"DEBUG: UI dump length: {len(ui_dump)} characters")
 
         # Look for clickable book button elements (better than title text)
         import re
@@ -503,87 +504,74 @@ class AndroidKindleAutomator:
 
     def _open_book_notes_view(self, book: UIElement) -> bool:
         """Open the notes/highlights view for a book"""
-        # Try Method 1: Long press to open context menu
-        logging.info(f"Attempting long press at ({book.x}, {book.y})")
-        self.run_adb_command([
-            "shell", "input", "swipe",
-            str(book.x), str(book.y), str(book.x), str(book.y), "1000"
-        ])
-        time.sleep(2)
-
-        # Check what options appeared
-        visible_text = self.get_ui_text_elements()
-        logging.info(f"Available options after long press: {[t for t in visible_text if len(t) < 50]}")
-
-        # Look for note viewing options
-        note_options = [
-            "View Notes & Highlights",
-            "Notes & Highlights",
-            "View Notes",
-            "Notes",
-            "Highlights",
-            "My Notes",
-            "View Highlights"
-        ]
-
-        for option in note_options:
-            if self.wait_for_text(option, timeout=2.0):
-                logging.info(f"Found notes option: {option}")
-                option_elements = self.find_elements_by_text(option)
-                if option_elements:
-                    self.tap(option_elements[0].x, option_elements[0].y, delay=3)
-
-                    # Verify we're in notes view
-                    time.sleep(2)
-                    ui_dump = self.get_ui_dump()
-                    # Look for indicators we're in notes view
-                    if any(indicator in ui_dump for indicator in [
-                        "Export Notebook",
-                        "notebook_export",
-                        "Share Notebook",
-                        "highlight_list"
-                    ]):
-                        logging.info("Successfully opened notes view")
-                        return True
-
-        # Method 2: Try tapping the book normally to open it, then access notes
-        logging.info("Long press didn't work, trying to open book and access notes menu")
+        # Step 1: Tap the book to open it
+        logging.info(f"Opening book by tapping at ({book.x}, {book.y})")
         self.tap(book.x, book.y, delay=3)
 
-        # Once book is open, try to access notes from the menu
-        # Tap top of screen to show toolbar
-        self.tap(540, 200)  # Top center of screen
+        # Step 2: Tap top of screen to show toolbar if not visible
+        logging.info("Ensuring toolbar is visible")
+        self.tap(540, 200)
         time.sleep(1)
 
-        # Look for notes icon or menu
-        if self.wait_for_text("Notes", timeout=2.0):
-            notes_elements = self.find_elements_by_text("Notes")
-            if notes_elements:
-                self.tap(notes_elements[0].x, notes_elements[0].y, delay=2)
-                return True
-
-        # Try three-dot menu
+        # Step 3: Look for the Notebook/Annotation icon button
+        # This is the third button from the right in the upper right corner
         ui_dump = self.get_ui_dump()
         import re
-        # Look for menu button (usually three dots or more options)
-        menu_pattern = r'content-desc="More options"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
-        menu_match = re.search(menu_pattern, ui_dump)
-        if menu_match:
-            x1, y1, x2, y2 = map(int, menu_match.groups())
+
+        logging.info("Looking for Notebook/Annotation button")
+
+        # Try multiple patterns for the notebook/annotation button
+        notebook_patterns = [
+            r'content-desc="[^"]*[Nn]otebook[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'content-desc="[^"]*[Aa]nnotation[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'resource-id="[^"]*notebook[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'resource-id="[^"]*annotation[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+        ]
+
+        for pattern in notebook_patterns:
+            match = re.search(pattern, ui_dump, re.IGNORECASE)
+            if match:
+                x1, y1, x2, y2 = map(int, match.groups())
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                logging.info(f"Found Notebook button at ({center_x}, {center_y})")
+                self.tap(center_x, center_y, delay=3)
+
+                # Verify we're in Annotations view
+                time.sleep(2)
+                if self.wait_for_text("Annotations", timeout=3.0):
+                    logging.info("Successfully opened Annotations view")
+                    return True
+
+        # If specific patterns don't work, try looking for buttons in the upper right area
+        # and find the third from the right
+        logging.info("Trying to find toolbar buttons in upper right corner")
+        button_pattern = r'clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+        all_buttons = re.findall(button_pattern, ui_dump)
+
+        # Filter for buttons in upper right corner (y < 300, x > 700)
+        upper_right_buttons = []
+        for x1, y1, x2, y2 in all_buttons:
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
             center_x = (x1 + x2) // 2
             center_y = (y1 + y2) // 2
-            logging.info(f"Found menu button at ({center_x}, {center_y})")
-            self.tap(center_x, center_y, delay=1)
+            if y1 < 300 and center_x > 700:
+                upper_right_buttons.append((center_x, center_y, x1))
 
-            # Now look for notes option in menu
-            for option in note_options:
-                if self.wait_for_text(option, timeout=2.0):
-                    option_elements = self.find_elements_by_text(option)
-                    if option_elements:
-                        self.tap(option_elements[0].x, option_elements[0].y, delay=2)
-                        return True
+        # Sort by x coordinate (rightmost first) and get the third one
+        upper_right_buttons.sort(key=lambda b: b[2], reverse=True)
 
-        logging.warning("Could not open notes view")
+        if len(upper_right_buttons) >= 3:
+            third_from_right = upper_right_buttons[2]
+            logging.info(f"Trying third button from right at ({third_from_right[0]}, {third_from_right[1]})")
+            self.tap(third_from_right[0], third_from_right[1], delay=3)
+
+            time.sleep(2)
+            if self.wait_for_text("Annotations", timeout=3.0):
+                logging.info("Successfully opened Annotations view")
+                return True
+
+        logging.warning("Could not open Annotations view")
         return False
 
     def _tap_export_button(self) -> bool:
@@ -656,32 +644,43 @@ class AndroidKindleAutomator:
         return False
 
     def _select_export_notebook(self) -> bool:
-        """Select 'Export Notebook' from menu"""
-        logging.info("Looking for Export Notebook option")
+        """Select citation style (None) from the citation dialog"""
+        logging.info("Looking for citation style dialog")
 
-        export_options = [
-            "Export Notebook",
-            "Export as HTML",
-            "Export My Notes",
-            "Email",
-            "Share"
+        # Wait for citation style dialog to appear
+        time.sleep(2)
+
+        # Look for the citation style options: APA, Chicago Style, MLA, None
+        citation_styles = [
+            "None",  # Try "None" first as that's what we want
+            "APA",
+            "Chicago Style",
+            "MLA"
         ]
 
-        for option in export_options:
-            if self.wait_for_text(option, timeout=3.0):
-                logging.info(f"Found export option: {option}")
-                option_elements = self.find_elements_by_text(option)
-                if option_elements:
-                    self.tap(option_elements[0].x, option_elements[0].y, delay=2)
-                    return True
+        # Check if we're at the citation style dialog
+        for style in citation_styles:
+            if self.wait_for_text(style, timeout=2.0):
+                logging.info(f"Citation style dialog found, options include: {style}")
+                break
+        else:
+            # If no citation styles found, maybe we're already past this step
+            if self.wait_for_text("OneDrive", timeout=1.0):
+                logging.info("Already at share sheet, skipping citation selection")
+                return True
+            logging.warning("Could not find citation style dialog")
+            return False
 
-        # If we don't see "Export Notebook", we might already be at the share sheet
-        # Check for OneDrive directly
-        if self.wait_for_text("OneDrive", timeout=1.0):
-            logging.info("Already at share sheet, skipping Export Notebook selection")
-            return True
+        # Select "None" citation style
+        if self.wait_for_text("None", timeout=2.0):
+            logging.info("Selecting 'None' citation style")
+            none_elements = self.find_elements_by_text("None")
+            if none_elements:
+                self.tap(none_elements[0].x, none_elements[0].y, delay=2)
+                logging.info("Selected 'None' citation style")
+                return True
 
-        logging.warning("Could not find Export Notebook option")
+        logging.warning("Could not select 'None' citation style")
         return False
 
     def _select_onedrive_share(self) -> bool:
@@ -821,8 +820,14 @@ class AndroidKindleAutomator:
             # Get books in collection (with pagination)
             books = self.get_all_books_in_collection()
 
+            logging.info(f"DEBUG: get_all_books_in_collection returned {len(books) if books else 0} books")
+
             if not books:
                 logging.warning("No books found in collection")
+                logging.warning("This could mean:")
+                logging.warning("  1. Collection is empty")
+                logging.warning("  2. Book detection patterns need adjustment")
+                logging.warning("  3. UI structure changed")
                 return self.export_stats
 
             if self.max_books:
