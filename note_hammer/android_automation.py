@@ -42,7 +42,7 @@ class AndroidKindleAutomator:
             "failed_books": []
         }
 
-    def run_adb_command(self, command: List[str]) -> str:
+    def run_adb_command(self, command: List[str], timeout: int = 30) -> str:
         """Execute ADB command and return output"""
         full_command = self.adb_prefix + command
         try:
@@ -50,9 +50,13 @@ class AndroidKindleAutomator:
                 full_command,
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                timeout=timeout
             )
             return result.stdout.strip()
+        except subprocess.TimeoutExpired as e:
+            logging.error(f"ADB command timed out after {timeout}s: {' '.join(full_command)}")
+            raise
         except subprocess.CalledProcessError as e:
             logging.error(f"ADB command failed: {' '.join(full_command)}")
             logging.error(f"Error: {e.stderr}")
@@ -126,18 +130,73 @@ class AndroidKindleAutomator:
     def launch_kindle(self) -> None:
         """Launch Kindle app and ensure we're at home screen"""
         logging.info("Launching Kindle app")
-        # Use monkey command as it's more reliable across different device manufacturers
-        self.run_adb_command([
-            "shell", "monkey",
-            "-p", "com.amazon.kindle",
-            "-c", "android.intent.category.LAUNCHER",
-            "1"
-        ])
+        # Use am start command instead of monkey (more reliable and faster)
+        try:
+            self.run_adb_command([
+                "shell", "am", "start",
+                "-n", "com.amazon.kindle/.StartupActivity"
+            ], timeout=10)
+            logging.info("Kindle app launch command sent")
+        except Exception as e:
+            logging.error(f"Failed to launch Kindle app: {e}")
+            # Try alternative package name
+            try:
+                self.run_adb_command([
+                    "shell", "am", "start",
+                    "-n", "com.amazon.kindle/.RootActivity"
+                ], timeout=10)
+                logging.info("Kindle app launched with alternative activity")
+            except Exception as e2:
+                logging.error(f"Alternative launch also failed: {e2}")
+                raise
+
         time.sleep(3)
+
+        # Check if app resumed in citation dialog and dismiss it
+        logging.info("About to check for citation dialog")
+        self._dismiss_citation_dialog_if_present()
+        logging.info("Citation dialog check complete")
 
         # If Kindle resumed into a book, go back to home
         logging.info("Ensuring we're at Kindle home screen")
         self._navigate_to_home()
+
+    def _dismiss_citation_dialog_if_present(self) -> None:
+        """Dismiss citation style dialog if Kindle resumed with it open"""
+        logging.info("Checking for citation dialog on startup")
+        time.sleep(1)  # Give UI time to settle
+
+        try:
+            ui_dump = self.get_ui_dump()
+
+            # Check if we're in citation dialog
+            if any(style in ui_dump for style in ["APA", "Chicago Style", "MLA"]):
+                logging.info("Citation dialog detected on startup")
+
+                # Try Cancel button (case-insensitive search in UI dump)
+                import re
+                cancel_pattern = r'text="[Cc]ancel"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+                cancel_match = re.search(cancel_pattern, ui_dump)
+
+                if cancel_match:
+                    x1, y1, x2, y2 = map(int, cancel_match.groups())
+                    center_x = (x1 + x2) // 2
+                    center_y = (y1 + y2) // 2
+                    logging.info(f"Found Cancel button at ({center_x}, {center_y})")
+                    self.tap(center_x, center_y, delay=2)
+                    logging.info("Dismissed citation dialog")
+                    return
+
+                # If Cancel button not found, try pressing back key
+                logging.warning("Cancel button not found in dialog, trying back key")
+                self.press_key("KEYCODE_BACK")
+                time.sleep(1)
+            else:
+                logging.info("No citation dialog detected on startup")
+        except Exception as e:
+            logging.error(f"Error checking for citation dialog: {e}")
+            # Continue anyway
+            pass
 
     def _navigate_to_home(self) -> None:
         """Navigate to Kindle home screen by pressing back until we get there"""
@@ -644,7 +703,7 @@ class AndroidKindleAutomator:
         return False
 
     def _select_export_notebook(self) -> bool:
-        """Select citation style (None) from the citation dialog"""
+        """Select citation style (None) from the citation dialog and click EXPORT"""
         logging.info("Looking for citation style dialog")
 
         # Wait for citation style dialog to appear
@@ -676,11 +735,32 @@ class AndroidKindleAutomator:
             logging.info("Selecting 'None' citation style")
             none_elements = self.find_elements_by_text("None")
             if none_elements:
-                self.tap(none_elements[0].x, none_elements[0].y, delay=2)
+                self.tap(none_elements[0].x, none_elements[0].y, delay=1)
                 logging.info("Selected 'None' citation style")
+        else:
+            logging.warning("Could not find 'None' citation style")
+
+        # Now click EXPORT button
+        time.sleep(1)
+        if self.wait_for_text("EXPORT", timeout=2.0):
+            logging.info("Clicking EXPORT button")
+            export_elements = self.find_elements_by_text("EXPORT")
+            if export_elements:
+                self.tap(export_elements[0].x, export_elements[0].y, delay=2)
+                logging.info("Clicked EXPORT button")
                 return True
 
-        logging.warning("Could not select 'None' citation style")
+        # Try alternative export button texts
+        export_variants = ["Export", "SHARE", "Share", "OK"]
+        for variant in export_variants:
+            if self.wait_for_text(variant, timeout=1.0):
+                logging.info(f"Clicking {variant} button")
+                elements = self.find_elements_by_text(variant)
+                if elements:
+                    self.tap(elements[0].x, elements[0].y, delay=2)
+                    return True
+
+        logging.warning("Could not find EXPORT button")
         return False
 
     def _select_onedrive_share(self) -> bool:
@@ -776,6 +856,15 @@ class AndroidKindleAutomator:
             if "lib_book_row_title" in ui_dump:
                 logging.info(f"Back at collection after {i+1} back presses")
                 return
+
+            # Check if we're in citation style dialog (back button won't work)
+            # Need to press Cancel button instead
+            if any(style in ui_dump for style in ["APA", "Chicago Style", "MLA"]):
+                logging.info("Detected citation style dialog, pressing Cancel button")
+                cancel_elements = self.find_elements_by_text("Cancel")
+                if cancel_elements:
+                    self.tap(cancel_elements[0].x, cancel_elements[0].y, delay=1)
+                    continue
 
             self.press_key("KEYCODE_BACK")
 
