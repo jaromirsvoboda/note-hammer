@@ -864,36 +864,97 @@ class AndroidKindleAutomator:
         logging.info("Confirming OneDrive upload")
 
         # Wait for OneDrive interface to load
-        time.sleep(2)
+        time.sleep(3)
+
+        # Debug: Log what's on screen
+        ui_dump = self.get_ui_dump()
+        visible_text = self.get_ui_text_elements()
+        logging.info(f"OneDrive screen visible text elements: {visible_text}")
 
         # Look for save/upload/add buttons
         confirm_options = [
             "Save",
+            "SAVE",
             "Upload",
+            "UPLOAD",
             "Add",
+            "ADD",
             "Done",
+            "DONE",
             "OK",
-            "Confirm"
+            "Confirm",
+            "CONFIRM"
         ]
 
         for option in confirm_options:
-            if self.wait_for_text(option, timeout=3.0):
+            if self.wait_for_text(option, timeout=2.0):
                 logging.info(f"Found confirmation button: {option}")
                 option_elements = self.find_elements_by_text(option)
                 if option_elements:
                     # Usually want the top-right button
                     # Sort by x coordinate descending to get rightmost
                     option_elements.sort(key=lambda e: e.x, reverse=True)
-                    self.tap(option_elements[0].x, option_elements[0].y, delay=2)
+                    logging.info(f"Tapping {option} button at ({option_elements[0].x}, {option_elements[0].y})")
+                    self.tap(option_elements[0].x, option_elements[0].y, delay=3)
                     return True
 
-        # Try tapping common save button locations
-        logging.info("Trying common save button locations")
+        # Try searching by resource ID and content-desc in UI dump
+        import re
+
+        # Look for OneDrive save/upload buttons by resource ID or content-desc
+        save_patterns = [
+            r'content-desc="[Ss]ave"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'content-desc="[Uu]pload"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'content-desc="[Aa]dd"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'resource-id="[^"]*save[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'resource-id="[^"]*upload[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+        ]
+
+        for pattern in save_patterns:
+            match = re.search(pattern, ui_dump, re.IGNORECASE)
+            if match:
+                x1, y1, x2, y2 = map(int, match.groups())
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                logging.info(f"Found save button via pattern at ({center_x}, {center_y})")
+                self.tap(center_x, center_y, delay=3)
+                return True
+
+        # Try looking for clickable buttons in the top-right area (common location for save)
+        logging.info("Looking for clickable buttons in top-right area")
+        button_pattern = r'clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+        all_buttons = re.findall(button_pattern, ui_dump)
+
+        top_right_buttons = []
+        for x1, y1, x2, y2 in all_buttons:
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
+            # Top area (y < 400) and right side (x > 700)
+            if y1 < 400 and center_x > 700:
+                top_right_buttons.append((center_x, center_y))
+                logging.info(f"Found top-right button at ({center_x}, {center_y})")
+
+        if top_right_buttons:
+            # Sort by x coordinate to get rightmost button
+            top_right_buttons.sort(key=lambda b: b[0], reverse=True)
+            logging.info(f"Trying rightmost top-right button at {top_right_buttons[0]}")
+            self.tap(top_right_buttons[0][0], top_right_buttons[0][1], delay=3)
+            return True
+
+        # Last resort: try tapping common save button locations
+        logging.warning("Could not find OneDrive save button - trying common locations")
+        logging.warning("This likely means the file was NOT uploaded!")
+
         # Top-right corner is typical for save buttons
         self.tap(980, 150, delay=2)
-
         time.sleep(1)
-        return True  # Assume success if we got this far
+
+        # Also try another common location
+        self.tap(950, 120, delay=2)
+        time.sleep(1)
+
+        return False  # Return False to indicate we're not sure if it worked
 
     def _return_to_collection(self) -> None:
         """Return to the collection view from wherever we are"""
