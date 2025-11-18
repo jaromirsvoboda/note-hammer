@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(del nul)"
+      "Bash(del nul)",
+      "Bash(adb devices:*)",
+      "Bash(adb shell:*)",
+      "Bash(C:ProjectsNoteHammer.venvScriptspython.exe -c \"from note_hammer.android_automation import AndroidKindleAutomator; import logging; logging.basicConfig(level=logging.INFO, format=''%(levelname)s - %(message)s''); automator = AndroidKindleAutomator(); print(f''Device ID: {automator.device_id}'')\")"
     ],
     "deny": [],
     "ask": []

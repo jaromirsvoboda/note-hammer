@@ -29,6 +29,10 @@ class AndroidKindleAutomator:
         max_books: Optional[int] = None,
         retry_attempts: int = 2
     ):
+        # Auto-detect device if not specified
+        if device_id is None:
+            device_id = self._auto_detect_device()
+
         self.device_id = device_id
         self.collection_name = collection_name
         self.export_delay = export_delay
@@ -41,6 +45,47 @@ class AndroidKindleAutomator:
             "failed": 0,
             "failed_books": []
         }
+
+    def _auto_detect_device(self) -> Optional[str]:
+        """Auto-detect connected ADB device. If only one device is connected, return its ID."""
+        try:
+            result = subprocess.run(
+                ["adb", "devices"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            # Parse device list (skip header line)
+            lines = [line.strip() for line in result.stdout.strip().split('\n')[1:] if line.strip()]
+            devices = []
+
+            for line in lines:
+                parts = line.split('\t')
+                if len(parts) >= 2 and parts[1] == 'device':
+                    devices.append(parts[0])
+
+            if len(devices) == 0:
+                logging.error("No ADB devices connected!")
+                logging.error("Please connect your device via USB or WiFi debugging:")
+                logging.error("  1. Enable Developer Options and USB Debugging on your device")
+                logging.error("  2. For WiFi: Settings > Developer Options > Wireless debugging")
+                logging.error("  3. Run 'adb devices' to verify connection")
+                raise RuntimeError("No ADB devices found. Please connect a device.")
+            elif len(devices) == 1:
+                logging.info(f"Auto-detected device: {devices[0]}")
+                return devices[0]
+            else:
+                logging.error(f"Multiple devices connected: {devices}")
+                logging.error("Please specify which device to use with --device option")
+                raise RuntimeError(f"Multiple devices found: {devices}. Please specify --device")
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to detect ADB devices: {e}")
+            raise
+        except FileNotFoundError:
+            logging.error("ADB command not found. Please install Android SDK Platform Tools.")
+            raise
 
     def run_adb_command(self, command: List[str], timeout: int = 30) -> str:
         """Execute ADB command and return output"""
@@ -131,24 +176,32 @@ class AndroidKindleAutomator:
         """Launch Kindle app and ensure we're at home screen"""
         logging.info("Launching Kindle app")
         # Use am start command instead of monkey (more reliable and faster)
-        try:
-            self.run_adb_command([
-                "shell", "am", "start",
-                "-n", "com.amazon.kindle/.StartupActivity"
-            ], timeout=10)
-            logging.info("Kindle app launch command sent")
-        except Exception as e:
-            logging.error(f"Failed to launch Kindle app: {e}")
-            # Try alternative package name
+        # Try different launch activities in order of preference
+        activities_to_try = [
+            "com.amazon.kindle/.UpgradePage",  # Most common main activity
+            "com.amazon.kindle/.StartupActivity",
+            "com.amazon.kindle/.RootActivity"
+        ]
+
+        last_error = None
+        for activity in activities_to_try:
             try:
+                logging.info(f"Trying to launch with activity: {activity}")
                 self.run_adb_command([
                     "shell", "am", "start",
-                    "-n", "com.amazon.kindle/.RootActivity"
+                    "-n", activity
                 ], timeout=10)
-                logging.info("Kindle app launched with alternative activity")
-            except Exception as e2:
-                logging.error(f"Alternative launch also failed: {e2}")
-                raise
+                logging.info(f"Kindle app launched successfully with {activity}")
+                break
+            except Exception as e:
+                logging.warning(f"Failed to launch with {activity}: {e}")
+                last_error = e
+                continue
+        else:
+            # If all attempts failed, raise the last error
+            logging.error("Failed to launch Kindle app with any known activity")
+            if last_error:
+                raise last_error
 
         time.sleep(3)
 
