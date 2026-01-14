@@ -2,12 +2,18 @@
 Android Kindle App Automation for Note Export
 Automates the process of exporting notes from all books in a specific collection
 """
+import os
 import time
 import logging
 import subprocess
 import json
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
+from pathlib import Path
+from datetime import datetime
+
+# Use port 5039 for ADB to avoid Windows Hyper-V port exclusion range (5037 is often blocked)
+os.environ.setdefault("ANDROID_ADB_SERVER_PORT", "5039")
 
 
 @dataclass
@@ -27,7 +33,9 @@ class AndroidKindleAutomator:
         collection_name: str = "To Export",
         export_delay: float = 3.0,
         max_books: Optional[int] = None,
-        retry_attempts: int = 2
+        retry_attempts: int = 2,
+        debug_screenshots: bool = False,
+        screenshot_dir: str = "debug_screenshots"
     ):
         # Auto-detect device if not specified
         if device_id is None:
@@ -46,14 +54,71 @@ class AndroidKindleAutomator:
             "failed_books": []
         }
 
-    def _auto_detect_device(self) -> Optional[str]:
-        """Auto-detect connected ADB device. If only one device is connected, return its ID."""
+        # Debug screenshot settings
+        self.debug_screenshots = debug_screenshots
+        self.screenshot_counter = 0
+        self.screenshot_dir = None
+
+        if self.debug_screenshots:
+            # Create timestamped directory for this session
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            self.screenshot_dir = Path(screenshot_dir) / f"session_{timestamp}"
+            self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+            logging.info(f"Debug screenshots enabled. Saving to: {self.screenshot_dir}")
+
+    def _ensure_adb_server(self) -> None:
+        """Ensure ADB server is running on the configured port."""
+        import shutil
+        adb_port = os.environ.get("ANDROID_ADB_SERVER_PORT", "5039")
+        adb_path = shutil.which("adb")
+        print(f"DEBUG: ADB port={adb_port}, ADB path={adb_path}", flush=True)
+        print(f"DEBUG: Running 'adb devices'...", flush=True)
+
+        # First, try to just list devices - if this works, server is already running
         try:
             result = subprocess.run(
                 ["adb", "devices"],
                 capture_output=True,
                 text=True,
-                check=True
+                timeout=5,
+                env=os.environ.copy()  # Explicitly pass environment
+            )
+            print(f"DEBUG: adb devices returned: rc={result.returncode}", flush=True)
+            print(f"DEBUG: stdout={result.stdout[:200] if result.stdout else 'empty'}", flush=True)
+            print(f"DEBUG: stderr={result.stderr[:200] if result.stderr else 'empty'}", flush=True)
+            if result.returncode == 0 and "List of devices" in result.stdout:
+                logging.info("ADB server already running")
+                return
+        except subprocess.TimeoutExpired:
+            print("DEBUG: adb devices TIMED OUT after 5 seconds", flush=True)
+        except Exception as e:
+            print(f"DEBUG: adb devices exception: {e}", flush=True)
+
+        # Only try to start server if devices check failed
+        print("DEBUG: Attempting to start ADB server...", flush=True)
+        try:
+            subprocess.run(
+                ["adb", "start-server"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=os.environ.copy()
+            )
+        except subprocess.TimeoutExpired:
+            logging.warning("ADB start-server timed out - try running 'adb start-server' manually in a terminal first")
+        except Exception as e:
+            logging.warning(f"ADB start-server issue: {e}")
+
+    def _auto_detect_device(self) -> Optional[str]:
+        """Auto-detect connected ADB device. If only one device is connected, return its ID."""
+        self._ensure_adb_server()
+        try:
+            result = subprocess.run(
+                ["adb", "devices"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30
             )
 
             # Parse device list (skip header line)
@@ -171,6 +236,39 @@ class AndroidKindleAutomator:
                 return True
             time.sleep(1)
         return False
+
+    def take_debug_screenshot(self, annotation: str) -> None:
+        """Take a numbered screenshot with annotation if debug mode is enabled"""
+        if not self.debug_screenshots or not self.screenshot_dir:
+            return
+
+        self.screenshot_counter += 1
+
+        # Create filename with counter and annotation
+        # Sanitize annotation for filename
+        safe_annotation = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' for c in annotation)
+        safe_annotation = safe_annotation.replace(' ', '_')
+        filename = f"{self.screenshot_counter:03d}_{safe_annotation}"
+
+        screenshot_path = self.screenshot_dir / f"{filename}.png"
+        ui_dump_path = self.screenshot_dir / f"{filename}.xml"
+
+        try:
+            # Take screenshot
+            self.run_adb_command(["shell", "screencap", "-p", f"/sdcard/{filename}.png"])
+            self.run_adb_command(["pull", f"/sdcard/{filename}.png", str(screenshot_path)])
+            self.run_adb_command(["shell", "rm", f"/sdcard/{filename}.png"])
+
+            # Save UI dump
+            ui_dump = self.get_ui_dump()
+            with open(ui_dump_path, 'w', encoding='utf-8') as f:
+                f.write(ui_dump)
+
+            logging.info(f"📸 Screenshot {self.screenshot_counter:03d}: {annotation}")
+            logging.info(f"   Saved to: {screenshot_path}")
+
+        except Exception as e:
+            logging.warning(f"Failed to take debug screenshot: {e}")
 
     def launch_kindle(self) -> None:
         """Launch Kindle app and ensure we're at home screen"""
@@ -617,13 +715,16 @@ class AndroidKindleAutomator:
     def _open_book_notes_view(self, book: UIElement) -> bool:
         """Open the notes/highlights view for a book"""
         # Step 1: Tap the book to open it
+        self.take_debug_screenshot("BEFORE - About to tap book")
         logging.info(f"Opening book by tapping at ({book.x}, {book.y})")
         self.tap(book.x, book.y, delay=3)
+        self.take_debug_screenshot("AFTER - Tapped book (should be in book view)")
 
         # Step 2: Tap top of screen to show toolbar if not visible
         logging.info("Ensuring toolbar is visible")
         self.tap(540, 200)
         time.sleep(1)
+        self.take_debug_screenshot("AFTER - Tapped top to show toolbar")
 
         # Step 3: Look for the Notebook/Annotation icon button
         # This is the third button from the right in the upper right corner
@@ -647,12 +748,15 @@ class AndroidKindleAutomator:
                 center_x = (x1 + x2) // 2
                 center_y = (y1 + y2) // 2
                 logging.info(f"Found Notebook button at ({center_x}, {center_y})")
+                self.take_debug_screenshot("BEFORE - About to tap Notebook button")
                 self.tap(center_x, center_y, delay=3)
+                self.take_debug_screenshot("AFTER - Tapped Notebook button (should show annotations)")
 
                 # Verify we're in Annotations view
                 time.sleep(2)
                 if self.wait_for_text("Annotations", timeout=3.0):
                     logging.info("Successfully opened Annotations view")
+                    self.take_debug_screenshot("SUCCESS - In Annotations view")
                     return True
 
         # If specific patterns don't work, try looking for buttons in the upper right area
@@ -676,13 +780,17 @@ class AndroidKindleAutomator:
         if len(upper_right_buttons) >= 3:
             third_from_right = upper_right_buttons[2]
             logging.info(f"Trying third button from right at ({third_from_right[0]}, {third_from_right[1]})")
+            self.take_debug_screenshot("BEFORE - About to tap third button from right")
             self.tap(third_from_right[0], third_from_right[1], delay=3)
+            self.take_debug_screenshot("AFTER - Tapped third button (should show annotations)")
 
             time.sleep(2)
             if self.wait_for_text("Annotations", timeout=3.0):
                 logging.info("Successfully opened Annotations view")
+                self.take_debug_screenshot("SUCCESS - In Annotations view (fallback method)")
                 return True
 
+        self.take_debug_screenshot("FAILED - Could not open Annotations view")
         logging.warning("Could not open Annotations view")
         return False
 
@@ -692,6 +800,7 @@ class AndroidKindleAutomator:
 
         # Wait a moment for the notes view to fully load
         time.sleep(2)
+        self.take_debug_screenshot("Looking for export/share button")
 
         # Look for various export button texts
         export_options = [
@@ -707,7 +816,9 @@ class AndroidKindleAutomator:
                 logging.info(f"Found export option: {option}")
                 option_elements = self.find_elements_by_text(option)
                 if option_elements:
+                    self.take_debug_screenshot(f"BEFORE - About to tap {option}")
                     self.tap(option_elements[0].x, option_elements[0].y, delay=2)
+                    self.take_debug_screenshot(f"AFTER - Tapped {option}")
                     return True
 
         # Try finding share icon by resource ID or description
@@ -761,6 +872,7 @@ class AndroidKindleAutomator:
 
         # Wait for citation style dialog to appear
         time.sleep(2)
+        self.take_debug_screenshot("Looking for citation style dialog")
 
         # Look for the citation style options: APA, Chicago Style, MLA, None
         citation_styles = [
@@ -788,7 +900,9 @@ class AndroidKindleAutomator:
             logging.info("Selecting 'None' citation style")
             none_elements = self.find_elements_by_text("None")
             if none_elements:
+                self.take_debug_screenshot("BEFORE - About to select None citation")
                 self.tap(none_elements[0].x, none_elements[0].y, delay=1)
+                self.take_debug_screenshot("AFTER - Selected None citation")
                 logging.info("Selected 'None' citation style")
         else:
             logging.warning("Could not find 'None' citation style")
@@ -799,7 +913,9 @@ class AndroidKindleAutomator:
             logging.info("Clicking EXPORT button")
             export_elements = self.find_elements_by_text("EXPORT")
             if export_elements:
+                self.take_debug_screenshot("BEFORE - About to click EXPORT button")
                 self.tap(export_elements[0].x, export_elements[0].y, delay=2)
+                self.take_debug_screenshot("AFTER - Clicked EXPORT button (should show share menu)")
                 logging.info("Clicked EXPORT button")
                 return True
 
@@ -822,13 +938,16 @@ class AndroidKindleAutomator:
 
         # Wait for share sheet to appear
         time.sleep(2)
+        self.take_debug_screenshot("Looking for OneDrive in share menu")
 
         # Look for OneDrive
         if self.wait_for_text("OneDrive", timeout=5.0):
             logging.info("Found OneDrive option")
             onedrive_elements = self.find_elements_by_text("OneDrive")
             if onedrive_elements:
+                self.take_debug_screenshot("BEFORE - About to tap OneDrive")
                 self.tap(onedrive_elements[0].x, onedrive_elements[0].y, delay=3)
+                self.take_debug_screenshot("AFTER - Tapped OneDrive (should open OneDrive)")
                 return True
 
         # Try scrolling in share sheet to find OneDrive
@@ -865,6 +984,7 @@ class AndroidKindleAutomator:
 
         # Wait for OneDrive interface to load
         time.sleep(3)
+        self.take_debug_screenshot("Looking for OneDrive save/upload button")
 
         # Debug: Log what's on screen
         ui_dump = self.get_ui_dump()
@@ -895,7 +1015,9 @@ class AndroidKindleAutomator:
                     # Sort by x coordinate descending to get rightmost
                     option_elements.sort(key=lambda e: e.x, reverse=True)
                     logging.info(f"Tapping {option} button at ({option_elements[0].x}, {option_elements[0].y})")
+                    self.take_debug_screenshot(f"BEFORE - About to tap {option} button")
                     self.tap(option_elements[0].x, option_elements[0].y, delay=3)
+                    self.take_debug_screenshot(f"AFTER - Tapped {option} button (upload should complete)")
                     return True
 
         # Try searching by resource ID and content-desc in UI dump
@@ -1116,6 +1238,10 @@ def main():
     parser.add_argument("--delay", type=float, default=3.0, help="Delay after each export")
     parser.add_argument("--max-books", type=int, help="Maximum number of books to export (for testing)")
     parser.add_argument("--retry", type=int, default=2, help="Number of retry attempts per book")
+    parser.add_argument("--debug-screenshots", action="store_true",
+                       help="Enable debug screenshots at every step (saved to debug_screenshots/)")
+    parser.add_argument("--screenshot-dir", default="debug_screenshots",
+                       help="Directory to save debug screenshots (default: debug_screenshots)")
 
     args = parser.parse_args()
 
@@ -1130,7 +1256,9 @@ def main():
         collection_name=args.collection,
         export_delay=args.delay,
         max_books=args.max_books,
-        retry_attempts=args.retry
+        retry_attempts=args.retry,
+        debug_screenshots=args.debug_screenshots,
+        screenshot_dir=args.screenshot_dir
     )
 
     try:

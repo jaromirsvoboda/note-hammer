@@ -67,17 +67,40 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Run Automated Android Export",
-            "type": "debugpy",
+            "name": "Check Android Connection",
+            "type": "python",
             "request": "launch",
             "module": "note_hammer",
             "justMyCode": true,
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "pythonPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "args": ["check_android"],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "PATH": "${env:PATH};C:\\ProgramData\\chocolatey\\bin",
+                "ANDROID_ADB_SERVER_PORT": "5039"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Automated Android Export",
+            "type": "python",
+            "request": "launch",
+            "module": "note_hammer",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "pythonPath": "${workspaceFolder}/.venv/Scripts/python.exe",
             "args": [
                 "automate_android",
                 "--collection", "To Export",
                 "--skip-confirmation",
                 "--max-books", "1"
             ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "PATH": "${env:PATH};C:\\ProgramData\\chocolatey\\bin",
+                "ANDROID_ADB_SERVER_PORT": "5039"
+            },
             "console": "integratedTerminal"
         }
     ]
