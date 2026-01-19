@@ -94,7 +94,8 @@
                 "automate_android",
                 "--collection", "To Export",
                 "--skip-confirmation",
-                "--max-books", "1"
+                "--max-books", "3",
+                "--debug-screenshots"
             ],
             "env": {
                 "PYTHONPATH": "${workspaceFolder}",

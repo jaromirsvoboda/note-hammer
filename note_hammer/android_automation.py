@@ -3,6 +3,7 @@ Android Kindle App Automation for Note Export
 Automates the process of exporting notes from all books in a specific collection
 """
 import os
+import sys
 import time
 import logging
 import subprocess
@@ -69,45 +70,85 @@ class AndroidKindleAutomator:
     def _ensure_adb_server(self) -> None:
         """Ensure ADB server is running on the configured port."""
         import shutil
-        adb_port = os.environ.get("ANDROID_ADB_SERVER_PORT", "5039")
+        import socket
+
+        adb_port = int(os.environ.get("ANDROID_ADB_SERVER_PORT", "5039"))
         adb_path = shutil.which("adb")
         print(f"DEBUG: ADB port={adb_port}, ADB path={adb_path}", flush=True)
-        print(f"DEBUG: Running 'adb devices'...", flush=True)
 
-        # First, try to just list devices - if this works, server is already running
-        try:
-            result = subprocess.run(
-                ["adb", "devices"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                env=os.environ.copy()  # Explicitly pass environment
-            )
-            print(f"DEBUG: adb devices returned: rc={result.returncode}", flush=True)
-            print(f"DEBUG: stdout={result.stdout[:200] if result.stdout else 'empty'}", flush=True)
-            print(f"DEBUG: stderr={result.stderr[:200] if result.stderr else 'empty'}", flush=True)
-            if result.returncode == 0 and "List of devices" in result.stdout:
-                logging.info("ADB server already running")
-                return
-        except subprocess.TimeoutExpired:
-            print("DEBUG: adb devices TIMED OUT after 5 seconds", flush=True)
-        except Exception as e:
-            print(f"DEBUG: adb devices exception: {e}", flush=True)
+        # Check if server is already running by trying to connect to the port
+        def is_server_running():
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex(('127.0.0.1', adb_port))
+                sock.close()
+                return result == 0
+            except:
+                return False
 
-        # Only try to start server if devices check failed
-        print("DEBUG: Attempting to start ADB server...", flush=True)
+        if is_server_running():
+            print(f"DEBUG: ADB server already running on port {adb_port}", flush=True)
+            return
+
+        print(f"DEBUG: ADB server not running, starting it on port {adb_port}...", flush=True)
+
+        # Kill any existing ADB server first (might be on wrong port)
         try:
-            subprocess.run(
-                ["adb", "start-server"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                env=os.environ.copy()
-            )
-        except subprocess.TimeoutExpired:
-            logging.warning("ADB start-server timed out - try running 'adb start-server' manually in a terminal first")
+            if sys.platform == "win32":
+                # On Windows, use taskkill to ensure all adb processes are killed
+                subprocess.run(
+                    ["taskkill", "/f", "/im", "adb.exe"],
+                    capture_output=True,
+                    timeout=5
+                )
+            else:
+                subprocess.run(["adb", "kill-server"], capture_output=True, timeout=5, env=os.environ.copy())
+            time.sleep(1)
         except Exception as e:
-            logging.warning(f"ADB start-server issue: {e}")
+            print(f"DEBUG: Kill server: {e}", flush=True)
+
+        # Start the server with proper Windows flags to prevent hanging
+        try:
+            env = os.environ.copy()
+            env["ANDROID_ADB_SERVER_PORT"] = str(adb_port)
+
+            if sys.platform == "win32":
+                # On Windows, start adb server detached so it doesn't block
+                CREATE_NO_WINDOW = 0x08000000
+                DETACHED_PROCESS = 0x00000008
+
+                process = subprocess.Popen(
+                    ["adb", "start-server"],
+                    env=env,
+                    creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL
+                )
+                # Give server time to start
+                time.sleep(3)
+            else:
+                subprocess.run(
+                    ["adb", "start-server"],
+                    capture_output=True,
+                    timeout=15,
+                    env=env
+                )
+
+            # Verify server started
+            for attempt in range(5):
+                if is_server_running():
+                    print(f"DEBUG: ADB server started successfully on port {adb_port}", flush=True)
+                    return
+                time.sleep(1)
+
+            print(f"DEBUG: WARNING - ADB server may not have started properly", flush=True)
+
+        except Exception as e:
+            print(f"DEBUG: Error starting ADB server: {e}", flush=True)
+            logging.warning(f"Could not start ADB server: {e}")
+            logging.warning(f"Try running manually: set ANDROID_ADB_SERVER_PORT={adb_port} && adb start-server")
 
     def _auto_detect_device(self) -> Optional[str]:
         """Auto-detect connected ADB device. If only one device is connected, return its ID."""
@@ -991,14 +1032,95 @@ class AndroidKindleAutomator:
         visible_text = self.get_ui_text_elements()
         logging.info(f"OneDrive screen visible text elements: {visible_text}")
 
-        # Look for save/upload/add buttons
+        import re
+
+        # PRIORITY 1: Find button by specific OneDrive identifiers
+        # The Upload button has resource-id="com.microsoft.skydrive:id/menu_action" and content-desc="Upload"
+        logging.info("Looking for OneDrive Upload button by element identifiers...")
+
+        # Pattern to find the exact OneDrive upload button
+        onedrive_upload_patterns = [
+            # Exact match for OneDrive's menu_action Upload button
+            r'resource-id="com\.microsoft\.skydrive:id/menu_action"[^>]*content-desc="Upload"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            # Alternative: content-desc first
+            r'content-desc="Upload"[^>]*resource-id="com\.microsoft\.skydrive:id/menu_action"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            # Fallback: any clickable button with content-desc="Upload"
+            r'content-desc="Upload"[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'clickable="true"[^>]*content-desc="Upload"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+        ]
+
+        for pattern in onedrive_upload_patterns:
+            match = re.search(pattern, ui_dump)
+            if match:
+                x1, y1, x2, y2 = map(int, match.groups())
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                logging.info(f"Found OneDrive Upload button at ({center_x}, {center_y})")
+                self.take_debug_screenshot(f"BEFORE - About to tap OneDrive Upload button at ({center_x}, {center_y})")
+                self.tap(center_x, center_y, delay=5)  # Wait longer for upload to start
+                self.take_debug_screenshot(f"AFTER - Tapped OneDrive Upload button")
+
+                # Verify upload status - check what app we're in now
+                post_upload_dump = self.get_ui_dump()
+                if "com.microsoft.skydrive" in post_upload_dump:
+                    # Still in OneDrive - might be an error or still uploading
+                    visible_text = self.get_ui_text_elements()
+                    logging.warning(f"Still in OneDrive after upload tap. Screen text: {visible_text}")
+                    self.take_debug_screenshot("WARNING - Still in OneDrive after upload")
+                    # Check for error messages
+                    error_keywords = ["error", "failed", "unable", "couldn't", "can't"]
+                    for text in visible_text:
+                        if any(kw in text.lower() for kw in error_keywords):
+                            logging.error(f"OneDrive error detected: {text}")
+                    # Wait a bit more and try pressing back to exit
+                    time.sleep(3)
+                    self.press_key("KEYCODE_BACK")
+                elif "com.amazon.kindle" in post_upload_dump:
+                    logging.info("Successfully returned to Kindle - upload likely initiated")
+                else:
+                    logging.info(f"In different app after upload tap")
+
+                return True
+
+        # PRIORITY 2: Find by resource-id alone (menu_action is the action button)
+        menu_action_pattern = r'resource-id="com\.microsoft\.skydrive:id/menu_action"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+        match = re.search(menu_action_pattern, ui_dump)
+        if match:
+            x1, y1, x2, y2 = map(int, match.groups())
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
+            logging.info(f"Found menu_action button at ({center_x}, {center_y})")
+            self.take_debug_screenshot(f"BEFORE - About to tap menu_action button at ({center_x}, {center_y})")
+            self.tap(center_x, center_y, delay=3)
+            self.take_debug_screenshot(f"AFTER - Tapped menu_action button")
+            return True
+
+        # PRIORITY 3: Generic fallback - look for any button with content-desc containing upload/save/done
+        logging.info("OneDrive button not found, trying generic patterns...")
+        generic_patterns = [
+            r'content-desc="[^"]*[Uu]pload[^"]*"[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'clickable="true"[^>]*content-desc="[^"]*[Uu]pload[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'content-desc="[^"]*[Ss]ave[^"]*"[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'content-desc="[^"]*[Dd]one[^"]*"[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+        ]
+
+        for pattern in generic_patterns:
+            match = re.search(pattern, ui_dump)
+            if match:
+                x1, y1, x2, y2 = map(int, match.groups())
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                logging.info(f"Found button via generic pattern at ({center_x}, {center_y})")
+                self.take_debug_screenshot(f"BEFORE - About to tap button at ({center_x}, {center_y})")
+                self.tap(center_x, center_y, delay=3)
+                self.take_debug_screenshot(f"AFTER - Tapped button")
+                return True
+
+        # Look for text buttons, but EXCLUDE title elements (which contain "to OneDrive")
         confirm_options = [
+            "Upload here",  # OneDrive specific
             "Save",
             "SAVE",
-            "Upload",
-            "UPLOAD",
-            "Add",
-            "ADD",
             "Done",
             "DONE",
             "OK",
@@ -1007,40 +1129,55 @@ class AndroidKindleAutomator:
         ]
 
         for option in confirm_options:
-            if self.wait_for_text(option, timeout=2.0):
-                logging.info(f"Found confirmation button: {option}")
+            if self.wait_for_text(option, timeout=1.0):
+                logging.info(f"Found text: {option}")
                 option_elements = self.find_elements_by_text(option)
                 if option_elements:
-                    # Usually want the top-right button
-                    # Sort by x coordinate descending to get rightmost
-                    option_elements.sort(key=lambda e: e.x, reverse=True)
-                    logging.info(f"Tapping {option} button at ({option_elements[0].x}, {option_elements[0].y})")
-                    self.take_debug_screenshot(f"BEFORE - About to tap {option} button")
-                    self.tap(option_elements[0].x, option_elements[0].y, delay=3)
-                    self.take_debug_screenshot(f"AFTER - Tapped {option} button (upload should complete)")
-                    return True
+                    # Filter out title elements - titles are usually wider and in top-left
+                    # Real buttons are usually smaller and more to the right
+                    valid_buttons = []
+                    for elem in option_elements:
+                        # Skip if this looks like a title (very wide or very left-aligned with low x)
+                        text_lower = elem.text.lower() if elem.text else ""
+                        # Skip "Upload to OneDrive" title
+                        if "to onedrive" in text_lower:
+                            logging.info(f"Skipping title element: {elem.text} at ({elem.x}, {elem.y})")
+                            continue
+                        # Buttons are usually on the right side (x > 600) or in a reasonable button position
+                        if elem.x > 500 or (elem.y > 100 and elem.y < 300):
+                            valid_buttons.append(elem)
+                            logging.info(f"Valid button candidate: {elem.text} at ({elem.x}, {elem.y})")
 
-        # Try searching by resource ID and content-desc in UI dump
-        import re
+                    if valid_buttons:
+                        # Sort by x coordinate descending to get rightmost
+                        valid_buttons.sort(key=lambda e: e.x, reverse=True)
+                        btn = valid_buttons[0]
+                        logging.info(f"Tapping {option} button at ({btn.x}, {btn.y})")
+                        self.take_debug_screenshot(f"BEFORE - About to tap {option} button")
+                        self.tap(btn.x, btn.y, delay=3)
+                        self.take_debug_screenshot(f"AFTER - Tapped {option} button (upload should complete)")
+                        return True
 
-        # Look for OneDrive save/upload buttons by resource ID or content-desc
-        save_patterns = [
-            r'content-desc="[Ss]ave"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
-            r'content-desc="[Uu]pload"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
-            r'content-desc="[Aa]dd"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
-            r'resource-id="[^"]*save[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
-            r'resource-id="[^"]*upload[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
-        ]
-
-        for pattern in save_patterns:
-            match = re.search(pattern, ui_dump, re.IGNORECASE)
-            if match:
-                x1, y1, x2, y2 = map(int, match.groups())
-                center_x = (x1 + x2) // 2
-                center_y = (y1 + y2) // 2
-                logging.info(f"Found save button via pattern at ({center_x}, {center_y})")
-                self.tap(center_x, center_y, delay=3)
-                return True
+        # Debug: dump all clickable elements with their details to help diagnose
+        logging.info("=== DEBUG: All clickable elements on OneDrive screen ===")
+        clickable_pattern = r'<[^>]*clickable="true"[^>]*>'
+        for match in re.finditer(clickable_pattern, ui_dump):
+            elem = match.group(0)
+            # Extract useful attributes
+            bounds_match = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', elem)
+            text_match = re.search(r'text="([^"]*)"', elem)
+            desc_match = re.search(r'content-desc="([^"]*)"', elem)
+            rid_match = re.search(r'resource-id="([^"]*)"', elem)
+            class_match = re.search(r'class="([^"]*)"', elem)
+            if bounds_match:
+                x1, y1, x2, y2 = map(int, bounds_match.groups())
+                cx, cy = (x1+x2)//2, (y1+y2)//2
+                text = text_match.group(1) if text_match else ""
+                desc = desc_match.group(1) if desc_match else ""
+                rid = rid_match.group(1) if rid_match else ""
+                cls = class_match.group(1).split(".")[-1] if class_match else ""
+                logging.info(f"  [{cx},{cy}] {cls}: text='{text}' desc='{desc}' rid='{rid}'")
+        logging.info("=== END DEBUG ===")
 
         # Try looking for clickable buttons in the top-right area (common location for save)
         logging.info("Looking for clickable buttons in top-right area")

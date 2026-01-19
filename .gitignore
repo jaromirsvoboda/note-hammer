@@ -141,4 +141,5 @@ test_resources/outputs/
 backup/
 ui_dumps/
 logs/
+debug_screenshots/
 nul

@@ -60,7 +60,8 @@ def extract_kindle(input_path: str, output_path: str, backup_path: str, default_
 @click.option('--backup-path', default=r".\backup", help='Path for backing up original files')
 @click.option('-dt', '--default-tags', multiple=True, help='Tags to add to all exported notes')
 @click.option('--skip-confirmation', is_flag=True, help='Skip confirmation prompts')
-def automate_android(device, collection, export_delay, max_books, retry, onedrive_path, output_path, backup_path, default_tags, skip_confirmation):
+@click.option('--debug-screenshots', is_flag=True, help='Save screenshots at each step for debugging')
+def automate_android(device, collection, export_delay, max_books, retry, onedrive_path, output_path, backup_path, default_tags, skip_confirmation, debug_screenshots):
     """Automate complete note extraction from Android Kindle app collection"""
 
     if not skip_confirmation:
@@ -73,7 +74,8 @@ def automate_android(device, collection, export_delay, max_books, retry, onedriv
         collection_name=collection,
         export_delay=export_delay,
         max_books=max_books,
-        retry_attempts=retry
+        retry_attempts=retry,
+        debug_screenshots=debug_screenshots
     )
 
     try:
