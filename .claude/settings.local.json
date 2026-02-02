@@ -5,7 +5,9 @@
       "Bash(adb devices:*)",
       "Bash(adb shell:*)",
       "Bash(python -m py_compile:*)",
-      "Bash(python3 -m py_compile:*)"
+      "Bash(python3 -m py_compile:*)",
+      "WebSearch",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []
