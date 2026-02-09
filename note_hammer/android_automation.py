@@ -36,7 +36,9 @@ class AndroidKindleAutomator:
         max_books: Optional[int] = None,
         retry_attempts: int = 2,
         debug_screenshots: bool = False,
-        screenshot_dir: str = "debug_screenshots"
+        screenshot_dir: str = "debug_screenshots",
+        share_target: str = "total_commander",
+        device_export_path: str = "/sdcard/Download/KindleExports"
     ):
         # Auto-detect device if not specified
         if device_id is None:
@@ -47,6 +49,8 @@ class AndroidKindleAutomator:
         self.export_delay = export_delay
         self.max_books = max_books
         self.retry_attempts = retry_attempts
+        self.share_target = share_target
+        self.device_export_path = device_export_path
         self.adb_prefix = ["adb"] + (["-s", device_id] if device_id else [])
         self.export_stats = {
             "attempted": 0,
@@ -239,10 +243,20 @@ class AndroidKindleAutomator:
         self.run_adb_command(["shell", "input", "keyevent", key])
         time.sleep(1)
 
-    def get_ui_dump(self) -> str:
-        """Get current UI hierarchy"""
-        self.run_adb_command(["shell", "uiautomator", "dump", "/sdcard/ui_dump.xml"])
-        return self.run_adb_command(["shell", "cat", "/sdcard/ui_dump.xml"])
+    def get_ui_dump(self, max_retries: int = 3) -> str:
+        """Get current UI hierarchy with retry logic for transient failures"""
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                self.run_adb_command(["shell", "uiautomator", "dump", "/sdcard/ui_dump.xml"])
+                return self.run_adb_command(["shell", "cat", "/sdcard/ui_dump.xml"])
+            except subprocess.CalledProcessError as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    logging.warning(f"UI dump failed (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(1.5)  # Wait for UI to stabilize
+        logging.error(f"UI dump failed after {max_retries} attempts")
+        raise last_error
 
     def get_ui_text_elements(self) -> List[str]:
         """Get just text elements from UI (more efficient than full dump)"""
@@ -721,9 +735,9 @@ class AndroidKindleAutomator:
                 time.sleep(1)
                 return False
 
-            # Step 4: Select OneDrive from share menu
-            if not self._select_onedrive_share():
-                logging.warning(f"Could not select OneDrive for {book.text}")
+            # Step 4: Select share target from share menu
+            if not self._select_share_target():
+                logging.warning(f"Could not select {self.share_target} for {book.text}")
                 self.press_key("KEYCODE_BACK")
                 time.sleep(1)
                 self.press_key("KEYCODE_BACK")
@@ -732,9 +746,9 @@ class AndroidKindleAutomator:
                 time.sleep(1)
                 return False
 
-            # Step 5: Confirm the OneDrive upload
-            if not self._confirm_onedrive_upload():
-                logging.warning(f"Could not confirm OneDrive upload for {book.text}")
+            # Step 5: Confirm the share target save/upload
+            if not self._confirm_share_target():
+                logging.warning(f"Could not confirm {self.share_target} save for {book.text}")
                 # Still return True since we got this far
 
             # Wait for export to complete
@@ -932,9 +946,14 @@ class AndroidKindleAutomator:
                 break
         else:
             # If no citation styles found, maybe we're already past this step
-            if self.wait_for_text("OneDrive", timeout=1.0):
-                logging.info("Already at share sheet, skipping citation selection")
-                return True
+            # Check for share sheet indicators (any common share target)
+            share_indicators = ["Total Commander", "Total Cmd", "Totalcmd",
+                                "OneDrive", "Bluetooth", "Gmail", "Messages",
+                                "Drive", "Copy to", "Nearby"]
+            for indicator in share_indicators:
+                if self.wait_for_text(indicator, timeout=0.5):
+                    logging.info(f"Already at share sheet (found '{indicator}'), skipping citation selection")
+                    return True
             logging.warning("Could not find citation style dialog")
             return False
 
@@ -1217,6 +1236,299 @@ class AndroidKindleAutomator:
 
         return False  # Return False to indicate we're not sure if it worked
 
+    def _ensure_device_export_directory(self) -> None:
+        """Create the export directory on device if it doesn't exist"""
+        logging.info(f"Ensuring device export directory exists: {self.device_export_path}")
+        self.run_adb_command(["shell", "mkdir", "-p", self.device_export_path])
+
+    def _clear_device_export_directory(self) -> None:
+        """Clear stale files from the device export directory before starting"""
+        logging.info(f"Clearing device export directory: {self.device_export_path}")
+        try:
+            self.run_adb_command(["shell", "rm", "-f", f"{self.device_export_path}/*"])
+        except subprocess.CalledProcessError:
+            # Directory might be empty or not exist yet, that's fine
+            logging.info("Export directory already clean or doesn't exist yet")
+
+    def _select_total_commander_share(self) -> bool:
+        """Select Total Commander from Android share menu"""
+        logging.info("Looking for Total Commander in share menu")
+
+        # Wait for share sheet to appear
+        time.sleep(2)
+        self.take_debug_screenshot("Looking for Total Commander in share menu")
+
+        # Try multiple text variants for Total Commander
+        tc_names = ["Total Commander", "Total Cmd", "Totalcmd"]
+
+        for tc_name in tc_names:
+            if self.wait_for_text(tc_name, timeout=5.0):
+                logging.info(f"Found {tc_name} option")
+                tc_elements = self.find_elements_by_text(tc_name)
+                if tc_elements:
+                    self.take_debug_screenshot(f"BEFORE - About to tap {tc_name}")
+                    self.tap(tc_elements[0].x, tc_elements[0].y, delay=3)
+                    self.take_debug_screenshot(f"AFTER - Tapped {tc_name}")
+                    return True
+
+        # Try scrolling in share sheet to find Total Commander
+        logging.info("Total Commander not immediately visible, trying to scroll")
+        import re
+        ui_dump = self.get_ui_dump()
+
+        # Try horizontal scroll in share sheet (apps row)
+        for _ in range(5):
+            self.swipe(800, 1500, 300, 1500, 300)  # Swipe left
+            time.sleep(1)
+
+            for tc_name in tc_names:
+                if self.wait_for_text(tc_name, timeout=2.0):
+                    tc_elements = self.find_elements_by_text(tc_name)
+                    if tc_elements:
+                        self.take_debug_screenshot(f"BEFORE - About to tap {tc_name} (after scroll)")
+                        self.tap(tc_elements[0].x, tc_elements[0].y, delay=3)
+                        self.take_debug_screenshot(f"AFTER - Tapped {tc_name}")
+                        return True
+
+        # Try vertical scroll in share sheet
+        logging.info("Trying vertical scroll in share sheet")
+        for _ in range(3):
+            self.swipe(540, 1800, 540, 1200, 300)  # Swipe up
+            time.sleep(1)
+
+            for tc_name in tc_names:
+                if self.wait_for_text(tc_name, timeout=2.0):
+                    tc_elements = self.find_elements_by_text(tc_name)
+                    if tc_elements:
+                        self.take_debug_screenshot(f"BEFORE - About to tap {tc_name} (after vertical scroll)")
+                        self.tap(tc_elements[0].x, tc_elements[0].y, delay=3)
+                        self.take_debug_screenshot(f"AFTER - Tapped {tc_name}")
+                        return True
+
+        # Debug: show what options are available
+        visible_text = self.get_ui_text_elements()
+        logging.info(f"Available share options: {[t for t in visible_text if len(t) < 30]}")
+
+        logging.warning("Could not find Total Commander in share menu")
+        return False
+
+    def _confirm_total_commander_save(self) -> bool:
+        """Confirm save in Total Commander's file dialog"""
+        logging.info("Confirming Total Commander save")
+
+        # Wait for Total Commander interface to load
+        time.sleep(3)
+        self.take_debug_screenshot("Total Commander save dialog")
+
+        ui_dump = self.get_ui_dump()
+        visible_text = self.get_ui_text_elements()
+        logging.info(f"Total Commander screen text elements: {visible_text}")
+
+        import re
+
+        # Strategy 1: Look for an EditText path field and type the target path
+        edit_text_pattern = r'class="android\.widget\.EditText"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+        edit_match = re.search(edit_text_pattern, ui_dump)
+        if not edit_match:
+            # Try alternative attribute ordering
+            edit_text_pattern2 = r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*class="android\.widget\.EditText"'
+            edit_match = re.search(edit_text_pattern2, ui_dump)
+
+        if edit_match:
+            x1, y1, x2, y2 = map(int, edit_match.groups())
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
+            logging.info(f"Found EditText path field at ({center_x}, {center_y})")
+            self.take_debug_screenshot("BEFORE - About to tap EditText and type path")
+
+            # Tap the field, clear it, type our path
+            self.tap(center_x, center_y, delay=0.5)
+            # Select all and delete existing text
+            self.run_adb_command(["shell", "input", "keyevent", "KEYCODE_MOVE_HOME"])
+            time.sleep(0.2)
+            self.run_adb_command(["shell", "input", "keyevent", "--longpress", "KEYCODE_SHIFT_LEFT", "KEYCODE_MOVE_END"])
+            time.sleep(0.2)
+            self.run_adb_command(["shell", "input", "keyevent", "KEYCODE_DEL"])
+            time.sleep(0.2)
+
+            # Type the target path
+            self.type_text(self.device_export_path)
+            time.sleep(0.5)
+            self.take_debug_screenshot("AFTER - Typed path in EditText")
+
+            # Press Enter to navigate
+            self.press_key("KEYCODE_ENTER")
+            time.sleep(2)
+            self.take_debug_screenshot("AFTER - Pressed Enter on path")
+
+        # Strategy 2: Navigate folder-by-folder if no EditText
+        else:
+            logging.info("No EditText found, trying folder-by-folder navigation")
+            # Parse the target path into components
+            path_parts = self.device_export_path.strip("/").split("/")
+            # Typically: sdcard / Download / KindleExports
+            # TC might show "Download" folder or we might need to navigate
+
+            for folder in path_parts:
+                if folder in ("sdcard", "storage", "emulated", "0"):
+                    continue  # Skip root-level paths that TC handles automatically
+
+                logging.info(f"Looking for folder: {folder}")
+                time.sleep(1)
+
+                folder_elements = self.find_elements_by_text(folder)
+                if folder_elements:
+                    logging.info(f"Found folder '{folder}', tapping")
+                    self.tap(folder_elements[0].x, folder_elements[0].y, delay=2)
+                    self.take_debug_screenshot(f"AFTER - Navigated to {folder}")
+                else:
+                    logging.warning(f"Folder '{folder}' not found on screen")
+                    # Might need to scroll to find it
+                    for _ in range(3):
+                        self.swipe(540, 1500, 540, 800, 300)
+                        time.sleep(1)
+                        folder_elements = self.find_elements_by_text(folder)
+                        if folder_elements:
+                            self.tap(folder_elements[0].x, folder_elements[0].y, delay=2)
+                            break
+
+        # Now look for confirm button
+        confirm_texts = ["Copy here", "OK", "Save", "Copy", "Done", "COPY HERE",
+                         "SAVE", "DONE", "OK", "Move here", "MOVE HERE",
+                         "Paste here", "PASTE HERE"]
+
+        time.sleep(1)
+        self.take_debug_screenshot("Looking for confirm button")
+
+        for confirm_text in confirm_texts:
+            if self.wait_for_text(confirm_text, timeout=2.0):
+                logging.info(f"Found confirm button: {confirm_text}")
+                elements = self.find_elements_by_text(confirm_text)
+                if elements:
+                    self.take_debug_screenshot(f"BEFORE - About to tap {confirm_text}")
+                    self.tap(elements[0].x, elements[0].y, delay=3)
+                    self.take_debug_screenshot(f"AFTER - Tapped {confirm_text}")
+
+                    # Verify we returned to Kindle
+                    time.sleep(2)
+                    post_save_dump = self.get_ui_dump()
+                    if "com.amazon.kindle" in post_save_dump:
+                        logging.info("Successfully returned to Kindle after TC save")
+                    else:
+                        logging.info("Not yet back in Kindle, waiting...")
+                        time.sleep(3)
+
+                    return True
+
+        # Fallback: look for any clickable button in the bottom area
+        logging.info("No confirm text found, looking for buttons in bottom area")
+        button_pattern = r'clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+        all_buttons = re.findall(button_pattern, ui_dump)
+
+        bottom_buttons = []
+        for x1, y1, x2, y2 in all_buttons:
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
+            # Look for buttons in the bottom third of screen
+            if center_y > 1500:
+                bottom_buttons.append((center_x, center_y))
+
+        if bottom_buttons:
+            logging.info(f"Found {len(bottom_buttons)} bottom buttons, trying first one")
+            self.tap(bottom_buttons[0][0], bottom_buttons[0][1], delay=3)
+            return True
+
+        logging.warning("Could not find Total Commander confirm button")
+        return False
+
+    def pull_exported_files(self, local_path: str) -> List[str]:
+        """Pull exported files from device to local path via ADB
+
+        Args:
+            local_path: Local directory to pull files into
+
+        Returns:
+            List of pulled HTML file paths
+        """
+        logging.info(f"Pulling exported files from {self.device_export_path} to {local_path}")
+
+        # Create local directory if needed
+        local_dir = Path(local_path)
+        local_dir.mkdir(parents=True, exist_ok=True)
+
+        # List files on device
+        try:
+            file_list = self.run_adb_command(
+                ["shell", "ls", self.device_export_path],
+                timeout=10
+            )
+            files = [f.strip() for f in file_list.split('\n') if f.strip()]
+            logging.info(f"Found {len(files)} files on device: {files}")
+        except subprocess.CalledProcessError:
+            logging.warning(f"No files found in {self.device_export_path}")
+            return []
+
+        if not files:
+            logging.warning("No files to pull")
+            return []
+
+        # Pull all files from device directory
+        try:
+            pull_output = self.run_adb_command(
+                ["pull", f"{self.device_export_path}/.", str(local_dir)],
+                timeout=120
+            )
+            logging.info(f"ADB pull output: {pull_output}")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"ADB pull failed: {e}")
+            # Try pulling files individually as fallback
+            logging.info("Trying individual file pulls as fallback")
+            for filename in files:
+                try:
+                    self.run_adb_command(
+                        ["pull", f"{self.device_export_path}/{filename}", str(local_dir / filename)],
+                        timeout=60
+                    )
+                    logging.info(f"Pulled: {filename}")
+                except subprocess.CalledProcessError as e2:
+                    logging.error(f"Failed to pull {filename}: {e2}")
+
+        # Return list of HTML files that were pulled
+        pulled_html = sorted(local_dir.glob("*.html"))
+        html_paths = [str(p) for p in pulled_html]
+        logging.info(f"Pulled {len(html_paths)} HTML files: {[Path(p).name for p in html_paths]}")
+        return html_paths
+
+    def cleanup_device_export_directory(self) -> None:
+        """Remove exported files from device after successful pull"""
+        logging.info(f"Cleaning up device export directory: {self.device_export_path}")
+        try:
+            self.run_adb_command(["shell", "rm", "-rf", self.device_export_path])
+            logging.info("Device export directory cleaned up")
+        except subprocess.CalledProcessError as e:
+            logging.warning(f"Failed to clean up device export directory: {e}")
+
+    def _select_share_target(self) -> bool:
+        """Select the configured share target from the Android share menu"""
+        if self.share_target == "total_commander":
+            return self._select_total_commander_share()
+        elif self.share_target == "onedrive":
+            return self._select_onedrive_share()
+        else:
+            logging.error(f"Unknown share target: {self.share_target}")
+            return False
+
+    def _confirm_share_target(self) -> bool:
+        """Confirm the save/upload in the configured share target"""
+        if self.share_target == "total_commander":
+            return self._confirm_total_commander_save()
+        elif self.share_target == "onedrive":
+            return self._confirm_onedrive_upload()
+        else:
+            logging.error(f"Unknown share target: {self.share_target}")
+            return False
+
     def _return_to_collection(self) -> None:
         """Return to the collection view from wherever we are"""
         logging.info("Returning to collection view")
@@ -1274,6 +1586,11 @@ class AndroidKindleAutomator:
         }
 
         try:
+            # Prepare device export directory for Total Commander
+            if self.share_target == "total_commander":
+                self._ensure_device_export_directory()
+                self._clear_device_export_directory()
+
             # Launch Kindle and navigate to collection
             self.launch_kindle()
 
@@ -1381,6 +1698,11 @@ def main():
                        help="Enable debug screenshots at every step (saved to debug_screenshots/)")
     parser.add_argument("--screenshot-dir", default="debug_screenshots",
                        help="Directory to save debug screenshots (default: debug_screenshots)")
+    parser.add_argument("--share-target", choices=["total_commander", "onedrive"],
+                       default="total_commander",
+                       help="Share target app (default: total_commander)")
+    parser.add_argument("--device-export-path", default="/sdcard/Download/KindleExports",
+                       help="Path on device where TC saves files (default: /sdcard/Download/KindleExports)")
 
     args = parser.parse_args()
 
@@ -1397,7 +1719,9 @@ def main():
         max_books=args.max_books,
         retry_attempts=args.retry,
         debug_screenshots=args.debug_screenshots,
-        screenshot_dir=args.screenshot_dir
+        screenshot_dir=args.screenshot_dir,
+        share_target=args.share_target,
+        device_export_path=args.device_export_path
     )
 
     try:

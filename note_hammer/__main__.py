@@ -55,65 +55,103 @@ def extract_kindle(input_path: str, output_path: str, backup_path: str, default_
 @click.option('--export-delay', default=3.0, type=float, help='Delay in seconds after each export operation')
 @click.option('--max-books', type=int, help='Maximum number of books to export (for testing)')
 @click.option('--retry', default=2, type=int, help='Number of retry attempts per book')
-@click.option('--onedrive-path', help='Path to OneDrive folder where exported files are saved')
+@click.option('--share-target', type=click.Choice(['total_commander', 'onedrive']),
+              default='total_commander', help='Share target app (default: total_commander)')
+@click.option('--device-export-path', default='/sdcard/Download/KindleExports',
+              help='Path on device where Total Commander saves files')
+@click.option('--local-pull-path', default=r'.\kindle_exports',
+              help='Local path to pull exported files into (Total Commander flow)')
+@click.option('--onedrive-path', help='Path to OneDrive folder where exported files are saved (OneDrive flow)')
 @click.option('--output-path', default=r".\export", help='Path where final markdown notes will be saved')
 @click.option('--backup-path', default=r".\backup", help='Path for backing up original files')
 @click.option('-dt', '--default-tags', multiple=True, help='Tags to add to all exported notes')
 @click.option('--skip-confirmation', is_flag=True, help='Skip confirmation prompts')
 @click.option('--debug-screenshots', is_flag=True, help='Save screenshots at each step for debugging')
-def automate_android(device, collection, export_delay, max_books, retry, onedrive_path, output_path, backup_path, default_tags, skip_confirmation, debug_screenshots):
+@click.option('--no-cleanup', is_flag=True, help='Keep files on device after pull (Total Commander flow)')
+@click.option('--skip-pull', is_flag=True, help='Skip ADB pull, reuse local files (Total Commander flow)')
+@click.option('--skip-automation', is_flag=True, help='Skip device automation, just pull and process')
+def automate_android(device, collection, export_delay, max_books, retry, share_target,
+                     device_export_path, local_pull_path, onedrive_path, output_path,
+                     backup_path, default_tags, skip_confirmation, debug_screenshots,
+                     no_cleanup, skip_pull, skip_automation):
     """Automate complete note extraction from Android Kindle app collection"""
 
     if not skip_confirmation:
-        click.confirm(f'This will automate your Android device to export notes from "{collection}" collection. Continue?', abort=True)
+        click.confirm(f'This will automate your Android device to export notes from "{collection}" collection '
+                      f'using {share_target}. Continue?', abort=True)
 
-    # Step 1: Automate Android app to export notes
-    click.echo(f"Starting Android automation for collection: {collection}")
     automator = AndroidKindleAutomator(
         device_id=device,
         collection_name=collection,
         export_delay=export_delay,
         max_books=max_books,
         retry_attempts=retry,
-        debug_screenshots=debug_screenshots
+        debug_screenshots=debug_screenshots,
+        share_target=share_target,
+        device_export_path=device_export_path
     )
 
-    try:
-        stats = automator.export_collection_notes()
+    if share_target == "total_commander":
+        # === Total Commander flow: automate -> pull -> process ===
 
-        click.echo(f"\nAndroid automation complete!")
-        click.echo(f"Successfully exported: {stats['successful']}/{stats['attempted']} books")
+        # Step 1: Run Android automation (unless skipped)
+        if not skip_automation:
+            click.echo(f"Starting Android automation for collection: {collection}")
+            click.echo(f"Share target: Total Commander -> {device_export_path}")
 
-        if stats['failed'] > 0:
-            click.echo(f"\nFailed exports: {stats['failed']}")
-            click.echo("Failed books:")
-            for book in stats['failed_books']:
-                click.echo(f"  - {book}")
+            try:
+                stats = automator.export_collection_notes()
 
-        if stats['successful'] == 0:
-            click.echo("\nNo books were successfully exported. Check the logs for details.")
-            return
+                click.echo(f"\nAndroid automation complete!")
+                click.echo(f"Successfully exported: {stats['successful']}/{stats['attempted']} books")
 
-    except KeyboardInterrupt:
-        click.echo("\nAutomation interrupted by user.")
-        return
-    except Exception as e:
-        click.echo(f"Android automation failed: {e}")
-        logging.error(f"Android automation error: {e}")
-        import traceback
-        traceback.print_exc()
-        return
+                if stats['failed'] > 0:
+                    click.echo(f"\nFailed exports: {stats['failed']}")
+                    click.echo("Failed books:")
+                    for book in stats['failed_books']:
+                        click.echo(f"  - {book}")
 
-    # Step 2: Process exported files with NoteHammer
-    if onedrive_path:
-        click.echo(f"\nProcessing exported files from OneDrive: {onedrive_path}")
+                if stats['successful'] == 0:
+                    click.echo("\nNo books were successfully exported. Check the logs for details.")
+                    if not skip_pull:
+                        return
 
-        # Wait a moment for OneDrive sync
-        click.echo("Waiting for OneDrive to sync...")
-        time.sleep(10)
+            except KeyboardInterrupt:
+                click.echo("\nAutomation interrupted by user.")
+                return
+            except Exception as e:
+                click.echo(f"Android automation failed: {e}")
+                logging.error(f"Android automation error: {e}")
+                import traceback
+                traceback.print_exc()
+                return
+        else:
+            click.echo("Skipping device automation (--skip-automation)")
 
+        # Step 2: ADB pull files from device (unless skipped)
+        if not skip_pull:
+            click.echo(f"\nPulling exported files from device to {local_pull_path}...")
+            html_files = automator.pull_exported_files(local_pull_path)
+
+            if not html_files:
+                click.echo("No HTML files were pulled from device. Check the device export path.")
+                return
+
+            click.echo(f"Pulled {len(html_files)} HTML file(s)")
+
+            # Clean up device files unless --no-cleanup
+            if not no_cleanup:
+                click.echo("Cleaning up device export directory...")
+                automator.cleanup_device_export_directory()
+            else:
+                click.echo("Keeping files on device (--no-cleanup)")
+        else:
+            click.echo(f"Skipping ADB pull, reusing local files from {local_pull_path}")
+
+        # Step 3: Process HTML files with NoteHammer
+        click.echo(f"\nProcessing exported files from: {local_pull_path}")
         note_hammer = NoteHammer(
-            input_path=onedrive_path,
+            input_path=local_pull_path,
             output_path=output_path,
             backup_path=backup_path,
             default_tags=list(default_tags),
@@ -123,9 +161,65 @@ def automate_android(device, collection, export_delay, max_books, retry, onedriv
 
         note_hammer.process_kindle_notes()
         click.echo(f"\nComplete! Markdown notes saved to: {output_path}")
-    else:
-        click.echo("\nOneDrive path not specified. You'll need to manually process the exported files.")
-        click.echo(f"Use: note-hammer extract_kindle -i <onedrive_kindle_folder> -o {output_path}")
+
+    elif share_target == "onedrive":
+        # === OneDrive flow: automate -> wait for sync -> process ===
+
+        # Step 1: Run Android automation (unless skipped)
+        if not skip_automation:
+            click.echo(f"Starting Android automation for collection: {collection}")
+            click.echo(f"Share target: OneDrive")
+
+            try:
+                stats = automator.export_collection_notes()
+
+                click.echo(f"\nAndroid automation complete!")
+                click.echo(f"Successfully exported: {stats['successful']}/{stats['attempted']} books")
+
+                if stats['failed'] > 0:
+                    click.echo(f"\nFailed exports: {stats['failed']}")
+                    click.echo("Failed books:")
+                    for book in stats['failed_books']:
+                        click.echo(f"  - {book}")
+
+                if stats['successful'] == 0:
+                    click.echo("\nNo books were successfully exported. Check the logs for details.")
+                    return
+
+            except KeyboardInterrupt:
+                click.echo("\nAutomation interrupted by user.")
+                return
+            except Exception as e:
+                click.echo(f"Android automation failed: {e}")
+                logging.error(f"Android automation error: {e}")
+                import traceback
+                traceback.print_exc()
+                return
+        else:
+            click.echo("Skipping device automation (--skip-automation)")
+
+        # Step 2: Process exported files from OneDrive
+        if onedrive_path:
+            click.echo(f"\nProcessing exported files from OneDrive: {onedrive_path}")
+
+            # Wait a moment for OneDrive sync
+            click.echo("Waiting for OneDrive to sync...")
+            time.sleep(10)
+
+            note_hammer = NoteHammer(
+                input_path=onedrive_path,
+                output_path=output_path,
+                backup_path=backup_path,
+                default_tags=list(default_tags),
+                overwrite_older_notes=True,
+                skip_confirmation=True
+            )
+
+            note_hammer.process_kindle_notes()
+            click.echo(f"\nComplete! Markdown notes saved to: {output_path}")
+        else:
+            click.echo("\nOneDrive path not specified. You'll need to manually process the exported files.")
+            click.echo(f"Use: note-hammer extract_kindle -i <onedrive_kindle_folder> -o {output_path}")
 
 
 @cli.command(name="check_android")
