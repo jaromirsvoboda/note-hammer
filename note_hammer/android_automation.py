@@ -761,9 +761,11 @@ class AndroidKindleAutomator:
         self.tap(book.x, book.y, delay=3)
         self.take_debug_screenshot("AFTER - Tapped book (should be in book view)")
 
-        # Step 2: Tap top of screen to show toolbar if not visible
+        # Step 2: Tap very top of screen to show toolbar if not visible
+        # Use y=50 to tap in the status bar area, avoiding any content elements
+        # (like embedded images, links, tweets) that might be in the book
         logging.info("Ensuring toolbar is visible")
-        self.tap(540, 200)
+        self.tap(540, 50)
         time.sleep(1)
         self.take_debug_screenshot("AFTER - Tapped top to show toolbar")
 
