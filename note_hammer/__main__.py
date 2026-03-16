@@ -55,8 +55,8 @@ def extract_kindle(input_path: str, output_path: str, backup_path: str, default_
 @click.option('--export-delay', default=3.0, type=float, help='Delay in seconds after each export operation')
 @click.option('--max-books', type=int, help='Maximum number of books to export (for testing)')
 @click.option('--retry', default=2, type=int, help='Number of retry attempts per book')
-@click.option('--share-target', type=click.Choice(['total_commander', 'onedrive']),
-              default='total_commander', help='Share target app (default: total_commander)')
+@click.option('--share-target', type=click.Choice(['total_commander', 'onedrive', 'save_to', 'google_drive']),
+              default='google_drive', help='Share target app (default: google_drive)')
 @click.option('--device-export-path', default='/sdcard/Download/KindleExports',
               help='Path on device where Total Commander saves files')
 @click.option('--local-pull-path', default=r'.\kindle_exports',
@@ -91,8 +91,8 @@ def automate_android(device, collection, export_delay, max_books, retry, share_t
         device_export_path=device_export_path
     )
 
-    if share_target == "total_commander":
-        # === Total Commander flow: automate -> pull -> process ===
+    if share_target in ("total_commander", "save_to"):
+        # === Device save flow: automate -> pull -> process ===
 
         # Step 1: Run Android automation (unless skipped)
         if not skip_automation:
@@ -220,6 +220,44 @@ def automate_android(device, collection, export_delay, max_books, retry, share_t
         else:
             click.echo("\nOneDrive path not specified. You'll need to manually process the exported files.")
             click.echo(f"Use: note-hammer extract_kindle -i <onedrive_kindle_folder> -o {output_path}")
+
+    elif share_target == "google_drive":
+        # === Google Drive flow: automate -> upload to Drive ===
+
+        if not skip_automation:
+            click.echo(f"Starting Android automation for collection: {collection}")
+            click.echo(f"Share target: Google Drive")
+
+            try:
+                stats = automator.export_collection_notes()
+
+                click.echo(f"\nAndroid automation complete!")
+                click.echo(f"Successfully exported: {stats['successful']}/{stats['attempted']} books")
+
+                if stats['failed'] > 0:
+                    click.echo(f"\nFailed exports: {stats['failed']}")
+                    click.echo("Failed books:")
+                    for book in stats['failed_books']:
+                        click.echo(f"  - {book}")
+
+                if stats['successful'] == 0:
+                    click.echo("\nNo books were successfully exported. Check the logs for details.")
+                    return
+
+            except KeyboardInterrupt:
+                click.echo("\nAutomation interrupted by user.")
+                return
+            except Exception as e:
+                click.echo(f"Android automation failed: {e}")
+                logging.error(f"Android automation error: {e}")
+                import traceback
+                traceback.print_exc()
+                return
+        else:
+            click.echo("Skipping device automation (--skip-automation)")
+
+        click.echo("\nFiles uploaded to Google Drive root folder.")
+        click.echo(f"To process, download them and run: note-hammer extract_kindle -i <download_folder> -o {output_path}")
 
 
 @cli.command(name="check_android")

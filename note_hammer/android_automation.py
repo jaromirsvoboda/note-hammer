@@ -649,6 +649,10 @@ class AndroidKindleAutomator:
         for title, x1, y1, x2, y2 in matches:
             center_x = (int(x1) + int(x2)) // 2
             center_y = (int(y1) + int(y2)) // 2
+            # Skip books that are not downloaded — they can't be exported
+            if "Book not downloaded" in title:
+                logging.info(f"Skipping not-downloaded book: {title}")
+                continue
             books.append(UIElement(center_x, center_y, title))
             logging.info(f"Found book: {title}")
 
@@ -1326,53 +1330,63 @@ class AndroidKindleAutomator:
 
         import re
 
-        # Strategy 1: Look for an EditText path field and type the target path
-        edit_text_pattern = r'class="android\.widget\.EditText"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
-        edit_match = re.search(edit_text_pattern, ui_dump)
-        if not edit_match:
-            # Try alternative attribute ordering
-            edit_text_pattern2 = r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*class="android\.widget\.EditText"'
-            edit_match = re.search(edit_text_pattern2, ui_dump)
+        # Navigate to the target directory folder-by-folder.
+        # The EditText in TC's "Save File As" dialog is a filename filter (not a path
+        # input), so we must navigate using the folder list and ".." entries.
 
-        if edit_match:
-            x1, y1, x2, y2 = map(int, edit_match.groups())
-            center_x = (x1 + x2) // 2
-            center_y = (y1 + y2) // 2
-            logging.info(f"Found EditText path field at ({center_x}, {center_y})")
-            self.take_debug_screenshot("BEFORE - About to tap EditText and type path")
+        # Step 1: Determine current path from the path label
+        # TC shows path like "/storage/emulated/0/DCIM/*"
+        current_path = ""
+        for text in visible_text:
+            if text.startswith("/storage/") or text.startswith("/sdcard/"):
+                current_path = text.rstrip("*").rstrip("/")
+                break
+        logging.info(f"TC current path: {current_path}")
 
-            # Tap the field, clear it, type our path
-            self.tap(center_x, center_y, delay=0.5)
-            # Select all and delete existing text
-            self.run_adb_command(["shell", "input", "keyevent", "KEYCODE_MOVE_HOME"])
-            time.sleep(0.2)
-            self.run_adb_command(["shell", "input", "keyevent", "--longpress", "KEYCODE_SHIFT_LEFT", "KEYCODE_MOVE_END"])
-            time.sleep(0.2)
-            self.run_adb_command(["shell", "input", "keyevent", "KEYCODE_DEL"])
-            time.sleep(0.2)
+        # Normalize target: /sdcard/X is equivalent to /storage/emulated/0/X
+        target_path = self.device_export_path
+        target_normalized = target_path.replace("/sdcard/", "/storage/emulated/0/")
 
-            # Type the target path
-            self.type_text(self.device_export_path)
-            time.sleep(0.5)
-            self.take_debug_screenshot("AFTER - Typed path in EditText")
+        # Step 2: Navigate up to a common ancestor
+        if current_path and not target_normalized.startswith(current_path):
+            # Need to go up — tap ".." until we reach a common ancestor or root
+            max_up = 10
+            for _ in range(max_up):
+                up_elements = self.find_elements_by_text("..")
+                if up_elements:
+                    logging.info("Navigating up (tapping ..)")
+                    self.tap(up_elements[0].x, up_elements[0].y, delay=1.5)
+                    self.take_debug_screenshot("AFTER - Navigated up")
 
-            # Press Enter to navigate
-            self.press_key("KEYCODE_ENTER")
-            time.sleep(2)
-            self.take_debug_screenshot("AFTER - Pressed Enter on path")
+                    # Re-check current path
+                    visible_text = self.get_ui_text_elements()
+                    current_path = ""
+                    for text in visible_text:
+                        if text.startswith("/storage/") or text.startswith("/sdcard/"):
+                            current_path = text.rstrip("*").rstrip("/")
+                            break
+                    logging.info(f"TC current path after going up: {current_path}")
 
-        # Strategy 2: Navigate folder-by-folder if no EditText
+                    if current_path and target_normalized.startswith(current_path):
+                        break
+                else:
+                    logging.warning("Could not find '..' to navigate up")
+                    break
+
+        # Step 3: Navigate down to target folders
+        # Figure out which folders we still need to enter
+        if current_path:
+            # Remove current path prefix to get remaining folders
+            remaining = target_normalized[len(current_path):].strip("/")
         else:
-            logging.info("No EditText found, trying folder-by-folder navigation")
-            # Parse the target path into components
-            path_parts = self.device_export_path.strip("/").split("/")
-            # Typically: sdcard / Download / KindleExports
-            # TC might show "Download" folder or we might need to navigate
+            # Fallback: just use the non-root parts of the target
+            path_parts = target_path.strip("/").split("/")
+            remaining_parts = [p for p in path_parts if p not in ("sdcard", "storage", "emulated", "0")]
+            remaining = "/".join(remaining_parts)
 
-            for folder in path_parts:
-                if folder in ("sdcard", "storage", "emulated", "0"):
-                    continue  # Skip root-level paths that TC handles automatically
-
+        if remaining:
+            folders_to_navigate = remaining.split("/")
+            for folder in folders_to_navigate:
                 logging.info(f"Looking for folder: {folder}")
                 time.sleep(1)
 
@@ -1409,9 +1423,35 @@ class AndroidKindleAutomator:
                     self.tap(elements[0].x, elements[0].y, delay=3)
                     self.take_debug_screenshot(f"AFTER - Tapped {confirm_text}")
 
-                    # Verify we returned to Kindle
+                    # Check for error dialogs after tapping confirm
                     time.sleep(2)
+                    post_save_text = self.get_ui_text_elements()
                     post_save_dump = self.get_ui_dump()
+
+                    # Detect TC error dialogs (e.g. "Another operation is active",
+                    # "Write error", "Error writing to target file")
+                    error_detected = False
+                    for text in post_save_text:
+                        text_lower = text.lower()
+                        if any(err in text_lower for err in [
+                            "error", "write error", "another operation",
+                            "send error", "error writing"
+                        ]):
+                            logging.error(f"Total Commander error detected: {text}")
+                            self.take_debug_screenshot(f"ERROR - TC error dialog: {text[:50]}")
+                            error_detected = True
+                            break
+
+                    if error_detected:
+                        # Dismiss the error dialog
+                        ok_elements = self.find_elements_by_text("OK")
+                        if ok_elements:
+                            self.tap(ok_elements[0].x, ok_elements[0].y, delay=1)
+                        # Press back to exit TC
+                        self.press_key("KEYCODE_BACK")
+                        time.sleep(1)
+                        return False
+
                     if "com.amazon.kindle" in post_save_dump:
                         logging.info("Successfully returned to Kindle after TC save")
                     else:
@@ -1509,12 +1549,302 @@ class AndroidKindleAutomator:
         except subprocess.CalledProcessError as e:
             logging.warning(f"Failed to clean up device export directory: {e}")
 
+    def _find_elements_by_exact_text(self, text: str) -> List[UIElement]:
+        """Find UI elements with exact text match (not substring)"""
+        ui_dump = self.get_ui_dump()
+        import re
+        pattern = rf'text="{re.escape(text)}"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+        matches = re.findall(pattern, ui_dump)
+
+        elements = []
+        for match in matches:
+            x1, y1, x2, y2 = map(int, match)
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
+            elements.append(UIElement(center_x, center_y, text))
+
+        return elements
+
+    def _select_google_drive_share(self) -> bool:
+        """Select Google Drive from Android share menu"""
+        logging.info("Looking for Google Drive in share menu")
+
+        time.sleep(2)
+        self.take_debug_screenshot("Looking for Google Drive in share menu")
+
+        # Use exact match to avoid matching "OneDrive" when looking for "Drive"
+        drive_names = ["Drive", "Google Drive"]
+
+        for name in drive_names:
+            elements = self._find_elements_by_exact_text(name)
+            if elements:
+                logging.info(f"Found exact match for '{name}'")
+                self.take_debug_screenshot(f"BEFORE - About to tap {name}")
+                self.tap(elements[0].x, elements[0].y, delay=3)
+                self.take_debug_screenshot(f"AFTER - Tapped {name} (should open Drive)")
+                return True
+
+        # Try scrolling in share sheet
+        logging.info("Drive not immediately visible, trying to scroll")
+        for _ in range(3):
+            self.swipe(800, 1500, 300, 1500, 300)
+            time.sleep(1)
+
+            for name in drive_names:
+                elements = self._find_elements_by_exact_text(name)
+                if elements:
+                    self.tap(elements[0].x, elements[0].y, delay=3)
+                    return True
+
+        visible_text = self.get_ui_text_elements()
+        logging.info(f"Available share options: {[t for t in visible_text if len(t) < 30]}")
+
+        logging.warning("Could not find Google Drive in share menu")
+        return False
+
+    def _confirm_google_drive_upload(self) -> bool:
+        """Confirm the Google Drive upload (tap Save button)"""
+        logging.info("Confirming Google Drive upload")
+
+        time.sleep(3)
+        self.take_debug_screenshot("Looking for Google Drive save button")
+
+        ui_dump = self.get_ui_dump()
+        visible_text = self.get_ui_text_elements()
+        logging.info(f"Google Drive screen visible text elements: {visible_text}")
+
+        import re
+
+        # Google Drive "Upload to Drive" dialog has an "Upload" button (top-right)
+        drive_save_patterns = [
+            r'text="Upload"[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'clickable="true"[^>]*text="Upload"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'content-desc="Upload"[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'clickable="true"[^>]*content-desc="Upload"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'text="Save"[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+            r'clickable="true"[^>]*text="Save"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+        ]
+
+        for pattern in drive_save_patterns:
+            match = re.search(pattern, ui_dump)
+            if match:
+                x1, y1, x2, y2 = map(int, match.groups())
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                logging.info(f"Found Drive Save button at ({center_x}, {center_y})")
+                self.take_debug_screenshot(f"BEFORE - About to tap Drive Save at ({center_x}, {center_y})")
+                self.tap(center_x, center_y, delay=5)
+                self.take_debug_screenshot(f"AFTER - Tapped Drive Save")
+
+                # Check if we returned to Kindle
+                time.sleep(2)
+                post_save_dump = self.get_ui_dump()
+                post_save_text = self.get_ui_text_elements()
+
+                if "com.amazon.kindle" in post_save_dump:
+                    logging.info("Successfully returned to Kindle after Drive save")
+                elif "com.google.android.apps.docs" in post_save_dump:
+                    # Still in Drive — check for error dialogs (short text only,
+                    # to avoid false positives from book content in the background)
+                    for text in post_save_text:
+                        text_lower = text.lower()
+                        if len(text) < 100 and any(err in text_lower for err in [
+                            "error", "failed", "unable", "couldn't", "upload failed"
+                        ]):
+                            logging.error(f"Google Drive error: {text}")
+                            self.take_debug_screenshot(f"ERROR - Drive error: {text[:50]}")
+                            self.press_key("KEYCODE_BACK")
+                            return False
+                    logging.info("Still in Drive, waiting for upload...")
+                    time.sleep(5)
+                else:
+                    logging.info("Upload likely initiated, returning")
+
+                return True
+
+        # Fallback: look for Upload/Save by text
+        button_names = ["Upload", "Save", "UPLOAD", "SAVE"]
+        for name in button_names:
+            if self.wait_for_text(name, timeout=3.0):
+                elements = self._find_elements_by_exact_text(name)
+                if elements:
+                    logging.info(f"Found '{name}' button via text search")
+                    self.take_debug_screenshot(f"BEFORE - About to tap {name}")
+                    self.tap(elements[0].x, elements[0].y, delay=5)
+                    self.take_debug_screenshot(f"AFTER - Tapped {name}")
+                    return True
+
+        logging.warning("Could not find Google Drive Upload/Save button")
+        self.take_debug_screenshot("FAILED - Could not find Drive Save button")
+        return False
+
+    def _select_save_to_share(self) -> bool:
+        """Select 'Save To...' app from Android share menu"""
+        logging.info("Looking for Save To... in share menu")
+
+        time.sleep(2)
+        self.take_debug_screenshot("Looking for Save To in share menu")
+
+        save_to_names = ["Save To…", "Save To...", "Save To", "Save to…", "Save to...", "Save to"]
+
+        for name in save_to_names:
+            if self.wait_for_text(name, timeout=5.0):
+                logging.info(f"Found {name} option")
+                elements = self.find_elements_by_text(name)
+                if elements:
+                    self.take_debug_screenshot(f"BEFORE - About to tap {name}")
+                    self.tap(elements[0].x, elements[0].y, delay=3)
+                    self.take_debug_screenshot(f"AFTER - Tapped {name}")
+                    return True
+
+        # Try tapping "More" to expand the full app list
+        logging.info("Save To not immediately visible, trying 'More' button")
+        if self.wait_for_text("More", timeout=3.0):
+            more_elements = self.find_elements_by_text("More")
+            if more_elements:
+                self.tap(more_elements[0].x, more_elements[0].y, delay=2)
+                self.take_debug_screenshot("AFTER - Tapped More in share sheet")
+
+                for name in save_to_names:
+                    if self.wait_for_text(name, timeout=3.0):
+                        elements = self.find_elements_by_text(name)
+                        if elements:
+                            self.take_debug_screenshot(f"BEFORE - About to tap {name} (from More)")
+                            self.tap(elements[0].x, elements[0].y, delay=3)
+                            self.take_debug_screenshot(f"AFTER - Tapped {name}")
+                            return True
+
+                # Scroll down in the expanded list to find it
+                for _ in range(3):
+                    self.swipe(540, 1800, 540, 1200, 300)
+                    time.sleep(1)
+
+                    for name in save_to_names:
+                        if self.wait_for_text(name, timeout=2.0):
+                            elements = self.find_elements_by_text(name)
+                            if elements:
+                                self.tap(elements[0].x, elements[0].y, delay=3)
+                                return True
+
+        visible_text = self.get_ui_text_elements()
+        logging.info(f"Available share options: {[t for t in visible_text if len(t) < 30]}")
+
+        logging.warning("Could not find Save To in share menu")
+        return False
+
+    def _confirm_save_to_save(self) -> bool:
+        """Confirm save in 'Save To...' app's SAF file picker dialog.
+
+        The Save To app opens Android's native Storage Access Framework (SAF) picker.
+        We navigate to the target directory and tap Save.
+        """
+        logging.info("Confirming Save To... file save")
+
+        time.sleep(3)
+        self.take_debug_screenshot("Save To file picker dialog")
+
+        visible_text = self.get_ui_text_elements()
+        logging.info(f"Save To screen text elements: {visible_text}")
+
+        # The SAF picker shows a hamburger menu or breadcrumb navigation.
+        # We need to navigate to Download/KindleExports.
+        # First, check if we need to navigate at all or if we're already in the right place.
+
+        # Look for "Save" button — if the app just shows a save button, tap it
+        save_names = ["Save", "SAVE"]
+        for name in save_names:
+            if self.wait_for_text(name, timeout=3.0):
+                # Check if we're in the right directory first
+                if any("KindleExports" in t for t in visible_text):
+                    logging.info("Already in KindleExports directory")
+                    elements = self.find_elements_by_text(name)
+                    if elements:
+                        self.take_debug_screenshot(f"BEFORE - About to tap {name}")
+                        self.tap(elements[0].x, elements[0].y, delay=3)
+                        self.take_debug_screenshot(f"AFTER - Tapped {name}")
+
+                        # Check for errors
+                        time.sleep(2)
+                        post_save_text = self.get_ui_text_elements()
+                        for text in post_save_text:
+                            if "error" in text.lower():
+                                logging.error(f"Save To error: {text}")
+                                self.take_debug_screenshot(f"ERROR - Save To error: {text[:50]}")
+                                self.press_key("KEYCODE_BACK")
+                                return False
+
+                        return True
+
+        # Navigate to the target directory in the SAF picker
+        # SAF picker typically has a hamburger menu (☰) to access storage roots,
+        # or shows the current location with breadcrumbs
+
+        # Try to open the navigation drawer/menu to access Downloads
+        import re
+        ui_dump = self.get_ui_dump()
+
+        # Look for hamburger/menu button (often top-left)
+        menu_pattern = r'content-desc="(Show roots|Menu|Navigation|☰|Open navigation)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+        menu_match = re.search(menu_pattern, ui_dump, re.IGNORECASE)
+        if menu_match:
+            desc, x1, y1, x2, y2 = menu_match.groups()
+            center_x = (int(x1) + int(x2)) // 2
+            center_y = (int(y1) + int(y2)) // 2
+            logging.info(f"Found navigation menu: {desc} at ({center_x}, {center_y})")
+            self.tap(center_x, center_y, delay=2)
+            self.take_debug_screenshot("AFTER - Opened navigation menu")
+
+            # Look for Downloads in the navigation drawer
+            if self.wait_for_text("Downloads", timeout=3.0):
+                dl_elements = self.find_elements_by_text("Downloads")
+                if dl_elements:
+                    self.tap(dl_elements[0].x, dl_elements[0].y, delay=2)
+                    self.take_debug_screenshot("AFTER - Tapped Downloads")
+
+        # Now look for KindleExports folder
+        time.sleep(1)
+        if self.wait_for_text("KindleExports", timeout=3.0):
+            ke_elements = self.find_elements_by_text("KindleExports")
+            if ke_elements:
+                self.tap(ke_elements[0].x, ke_elements[0].y, delay=2)
+                self.take_debug_screenshot("AFTER - Navigated to KindleExports")
+
+        # Now tap Save
+        time.sleep(1)
+        self.take_debug_screenshot("Looking for Save button")
+        for name in save_names:
+            if self.wait_for_text(name, timeout=3.0):
+                elements = self.find_elements_by_text(name)
+                if elements:
+                    self.take_debug_screenshot(f"BEFORE - About to tap {name}")
+                    self.tap(elements[0].x, elements[0].y, delay=3)
+                    self.take_debug_screenshot(f"AFTER - Tapped {name}")
+
+                    # Check for errors
+                    time.sleep(2)
+                    post_save_text = self.get_ui_text_elements()
+                    for text in post_save_text:
+                        if "error" in text.lower():
+                            logging.error(f"Save To error: {text}")
+                            self.take_debug_screenshot(f"ERROR - Save To error: {text[:50]}")
+                            self.press_key("KEYCODE_BACK")
+                            return False
+
+                    return True
+
+        logging.warning("Could not find Save button in Save To dialog")
+        return False
+
     def _select_share_target(self) -> bool:
         """Select the configured share target from the Android share menu"""
         if self.share_target == "total_commander":
             return self._select_total_commander_share()
         elif self.share_target == "onedrive":
             return self._select_onedrive_share()
+        elif self.share_target == "save_to":
+            return self._select_save_to_share()
+        elif self.share_target == "google_drive":
+            return self._select_google_drive_share()
         else:
             logging.error(f"Unknown share target: {self.share_target}")
             return False
@@ -1525,6 +1855,10 @@ class AndroidKindleAutomator:
             return self._confirm_total_commander_save()
         elif self.share_target == "onedrive":
             return self._confirm_onedrive_upload()
+        elif self.share_target == "save_to":
+            return self._confirm_save_to_save()
+        elif self.share_target == "google_drive":
+            return self._confirm_google_drive_upload()
         else:
             logging.error(f"Unknown share target: {self.share_target}")
             return False
