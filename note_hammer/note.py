@@ -81,7 +81,8 @@ class Note():
         author_parts =re.split("[.,! ]", authors)
         author_parts = [part.capitalize() for part in author_parts if part.strip() != ""]
         author_tag = "".join(author_parts)
-        tags.add(author_tag)
+        if author_tag:
+            tags.add(author_tag)
         # endregion
         
         return frozenset(tags)

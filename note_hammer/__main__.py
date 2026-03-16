@@ -31,7 +31,7 @@ def cli():
 @click.option('-o', '--output_path', default=r".\export", help='Path to the folder where the extracted notes will be saved (in .md format).')
 @click.option('-b', '--backup_path', default=r".\backup", help='Path to the folder where the Kindle htmls will be backed up to before extraction process. Empty string disables backup.')
 @click.option('-dt', '--default-tags', multiple=True, help='Tags to be added to all the notes. This option can be used multiple times to add multiple tags.')
-@click.option('-o', '--overwrite-older-notes', is_flag=True, help='Include this flag for overwriting older notes with the same name in the output path.')
+@click.option('-ow', '--overwrite-older-notes', is_flag=True, help='Include this flag for overwriting older notes with the same name in the output path.')
 @click.option('-sc', '--skip-confirmation', is_flag=True, help='Confirm before processing the notes.')
 def extract_kindle(input_path: str, output_path: str, backup_path: str, default_tags: list[str], overwrite_older_notes: bool, skip_confirmation: bool):
     if not skip_confirmation:

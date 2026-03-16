@@ -24,7 +24,11 @@ import argparse
 import logging
 import sys
 
-from note_hammer import __version__
+try:
+    from importlib.metadata import version, PackageNotFoundError
+    __version__ = version("note-hammer")
+except (PackageNotFoundError, Exception):
+    __version__ = "unknown"
 
 __author__ = "jaromirsvoboda"
 __copyright__ = "jaromirsvoboda"
